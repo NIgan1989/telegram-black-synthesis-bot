@@ -1,0 +1,960 @@
+/* ----------------------------------------------------
+   🔥 Refinery Channel Admin - Stylesheet
+   Design Language: Glassmorphism Dark, Premium Slate & Neon
+   ---------------------------------------------------- */
+
+:root {
+  --bg-gradient: linear-gradient(135deg, #070913 0%, #0f1123 50%, #151833 100%);
+  --panel-bg: rgba(20, 24, 46, 0.65);
+  --panel-border: rgba(255, 255, 255, 0.07);
+  --panel-glow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  
+  /* HSL Tailored Colors */
+  --primary: hsl(243, 80%, 65%);
+  --primary-glow: rgba(99, 102, 241, 0.45);
+  --secondary: hsl(210, 16%, 38%);
+  
+  --blue: hsl(217, 91%, 60%);
+  --blue-bg: rgba(59, 130, 246, 0.15);
+  --purple: hsl(271, 91%, 65%);
+  --purple-bg: rgba(168, 85, 247, 0.15);
+  --green: hsl(142, 76%, 45%);
+  --green-bg: rgba(34, 197, 94, 0.15);
+  --orange: hsl(27, 96%, 61%);
+  --orange-bg: rgba(249, 115, 22, 0.15);
+  --red: hsl(350, 89%, 60%);
+  --red-bg: rgba(239, 68, 68, 0.15);
+
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  
+  --font-heading: 'Montserrat', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  
+  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  --border-radius-sm: 8px;
+  --border-radius-md: 16px;
+  --border-radius-lg: 24px;
+}
+
+/* Сброс стилей */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  outline: none;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-gradient);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------
+   🌀 Анимации & Переходы
+   --------------------------------------------- */
+@keyframes pulse {
+  0% { transform: scale(0.95); opacity: 0.5; }
+  50% { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.5; }
+}
+
+@keyframes spinner {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0px); }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ---------------------------------------------
+   🎛️ Общие утилиты & Элементы UI
+   --------------------------------------------- */
+.glass {
+  background: var(--panel-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--panel-glow);
+  border-radius: var(--border-radius-md);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1.25rem; }
+.py-2 { padding-top: 1.25rem; padding-bottom: 1.25rem; }
+.text-center { text-align: center; }
+.text-sm { font-size: 0.875rem; }
+.font-bold { font-weight: 700; }
+.green-text { color: var(--green) !important; }
+
+/* Кнопки с микро-анимацией */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  font-weight: 700;
+  padding: 10px 20px;
+  border-radius: var(--border-radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-decoration: none;
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, hsl(243, 80%, 65%) 0%, hsl(243, 75%, 55%) 100%);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
+}
+.btn-primary:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.45);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-success {
+  background: linear-gradient(135deg, var(--green) 0%, hsl(142, 70%, 35%) 100%);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(34, 197, 94, 0.3);
+}
+.btn-success:hover {
+  filter: brightness(1.1);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, var(--red) 0%, hsl(350, 75%, 50%) 100%);
+  color: #fff;
+}
+.btn-danger:hover {
+  filter: brightness(1.1);
+}
+
+.btn-block {
+  width: 100%;
+  padding: 14px;
+  font-size: 1rem;
+}
+
+/* ---------------------------------------------
+   🌀 Загрузчик и Доступ закрыт
+   --------------------------------------------- */
+.loader-container, .denied-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 20px;
+  text-align: center;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid rgba(255, 255, 255, 0.05);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spinner 0.8s linear infinite;
+  margin-bottom: 20px;
+}
+
+.loader-container p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.error-icon {
+  font-size: 4rem;
+  color: var(--red);
+  margin-bottom: 20px;
+}
+
+/* ---------------------------------------------
+   📱 Главный макет (Контейнеры)
+   --------------------------------------------- */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: 600px; /* Оптимизировано под мобильный экран Telegram TWA */
+  margin: 0 auto;
+  padding: 16px 16px 80px 16px;
+  animation: slideIn 0.4s ease-out;
+}
+
+/* Шапка */
+.app-header {
+  margin-bottom: 16px;
+}
+
+.header-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.channel-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatar-container {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--purple) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+.channel-avatar {
+  font-size: 1.25rem;
+  color: #fff;
+}
+
+.channel-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.channel-title {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.channel-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Индикатор статуса */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.pulse-dot.active {
+  background-color: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse 1.8s infinite;
+}
+
+.pulse-dot.offline {
+  background-color: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+
+/* ---------------------------------------------
+   📂 Разделы контента (Табы)
+   --------------------------------------------- */
+.tab-content {
+  display: none;
+  animation: slideIn 0.3s ease-out;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.tab-header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tab-header-actions h2 {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+/* ---------------------------------------------
+   📊 Вкладка 1: Обзор (Главная)
+   --------------------------------------------- */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.metric-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 120px;
+  transition: var(--transition-fast);
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.metric-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.metric-icon {
+  font-size: 1.1rem;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.metric-icon.blue { color: var(--blue); background: var(--blue-bg); }
+.metric-icon.purple { color: var(--purple); background: var(--purple-bg); }
+.metric-icon.green { color: var(--green); background: var(--green-bg); }
+.metric-icon.orange { color: var(--orange); background: var(--orange-bg); }
+
+.metric-value {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin: 6px 0;
+  letter-spacing: -0.5px;
+}
+
+.metric-change {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.metric-change.positive {
+  color: var(--green);
+}
+
+/* Контейнеры графиков */
+.charts-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chart-container {
+  padding: 18px;
+}
+
+.chart-container h3 {
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.chart-wrapper {
+  position: relative;
+  height: 220px;
+  width: 100%;
+}
+
+.donut-wrapper {
+  height: 180px;
+}
+
+/* ---------------------------------------------
+   📝 Вкладка 2: Статьи и Черновики
+   --------------------------------------------- */
+.filter-bar {
+  display: flex;
+  padding: 4px;
+  border-radius: 30px;
+}
+
+.filter-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 25px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.filter-btn.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.posts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.post-card {
+  padding: 16px;
+  transition: var(--transition-normal);
+}
+
+.post-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.post-card-header h3 {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  max-width: 80%;
+  line-height: 1.4;
+}
+
+.post-type-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.post-type-badge.ad {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.post-type-badge.organic {
+  background: var(--blue-bg);
+  color: var(--blue);
+}
+
+.post-card-media {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.post-card-body {
+  font-size: 0.825rem;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  max-height: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  margin-bottom: 12px;
+}
+
+/* Полупрозрачное затухание текста */
+.post-card-body::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 35px;
+  background: linear-gradient(to top, rgba(20, 24, 46, 1) 0%, rgba(20, 24, 46, 0) 100%);
+}
+
+.post-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 10px;
+}
+
+.post-date {
+  margin-right: auto;
+  align-self: center;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.no-data {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+}
+
+.no-data i {
+  font-size: 2.5rem;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+/* ---------------------------------------------
+   🤝 Вкладка 3: Рекламные заказы
+   --------------------------------------------- */
+.ad-stats-card {
+  padding: 16px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  text-align: center;
+}
+
+.ad-stat-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.ad-stat-item .label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.ad-stat-item .value {
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.ad-stat-divider {
+  width: 1px;
+  height: 35px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.orders-table-container {
+  overflow-x: auto;
+  border-radius: var(--border-radius-md);
+}
+
+.orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  text-align: left;
+  min-width: 450px;
+}
+
+.orders-table th, .orders-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.orders-table th {
+  background: rgba(255, 255, 255, 0.03);
+  font-family: var(--font-heading);
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.orders-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.status-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 3px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  text-transform: uppercase;
+}
+
+.status-badge.completed { background: var(--green-bg); color: var(--green); }
+.status-badge.paid { background: var(--blue-bg); color: var(--blue); }
+.status-badge.pending { background: var(--orange-bg); color: var(--orange); }
+.status-badge.cancelled { background: var(--red-bg); color: var(--red); }
+
+/* ---------------------------------------------
+   💬 Вкладка 4: Отзывы и Тональность
+   --------------------------------------------- */
+.section-description {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  margin-bottom: 12px;
+}
+
+.comments-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comment-card {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.comment-user {
+  font-weight: 700;
+  font-size: 0.825rem;
+  color: #fff;
+}
+
+.sentiment-badge {
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.sentiment-badge.positive { background: var(--green-bg); color: var(--green); }
+.sentiment-badge.neutral { background: rgba(255, 255, 255, 0.07); color: var(--text-secondary); }
+.sentiment-badge.negative { background: var(--red-bg); color: var(--red); }
+
+.comment-text {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.comment-footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  padding-top: 6px;
+  margin-top: 2px;
+}
+
+.comment-post-title {
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------
+   🎛️ Вкладка 5: Настройки
+   --------------------------------------------- */
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  padding: 18px;
+}
+
+.form-group h3 {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 8px;
+}
+
+.toggle-control {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.toggle-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.toggle-desc {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  max-width: 80%;
+  margin-top: 2px;
+}
+
+/* Переключатель-слайдер */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input { 
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: .3s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #fff;
+  transition: .3s;
+}
+
+input:checked + .slider {
+  background-color: var(--primary);
+  box-shadow: 0 0 8px var(--primary-glow);
+}
+
+input:focus + .slider {
+  box-shadow: 0 0 1px var(--primary);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+/* Поля ввода */
+.input-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-field label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.input-field input, .input-field select, .input-field textarea {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 14px;
+  border-radius: var(--border-radius-sm);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  transition: var(--transition-fast);
+}
+
+.input-field input:focus, .input-field select:focus, .input-field textarea:focus {
+  border-color: var(--primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.input-help {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------
+   🧭 Навигационная панель (Таб-бар)
+   --------------------------------------------- */
+.app-nav-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  max-width: 600px;
+  margin: 0 auto;
+  border-radius: var(--border-radius-md) var(--border-radius-md) 0 0;
+  border-bottom: none;
+  z-index: 100;
+  padding: 0 10px;
+}
+
+.nav-item {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  flex: 1;
+  height: 100%;
+}
+
+.nav-item i {
+  font-size: 1.15rem;
+}
+
+.nav-item span {
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.nav-item:active {
+  transform: scale(0.92);
+}
+
+.nav-item.active {
+  color: var(--primary);
+  text-shadow: 0 0 10px var(--primary-glow);
+}
+
+/* ---------------------------------------------
+   🖼️ Модальные окна (Overlay)
+   --------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: slideIn 0.25s ease-out;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: var(--border-radius-md);
+  animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h2 {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: #fff;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 16px;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ---------------------------------------------
+   Responsive adjustments for desktop view
+   --------------------------------------------- */
+@media (min-width: 600px) {
+  .app-container {
+    padding-top: 24px;
+  }
+}

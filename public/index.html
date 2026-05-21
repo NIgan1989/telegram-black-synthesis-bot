@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Черный Синтез — Админ-панель</title>
+  <!-- Google Fonts: Inter & Montserrat -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Telegram WebApps SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  
+  <!-- Загрузочный экран -->
+  <div id="loader" class="loader-container">
+    <div class="spinner"></div>
+    <p>Загрузка панели управления...</p>
+  </div>
+
+  <!-- Ограничение доступа (для не-админов) -->
+  <div id="access-denied" class="denied-container hidden">
+    <i class="fa-solid fa-circle-exclamation error-icon"></i>
+    <h2>Доступ ограничен</h2>
+    <p id="denied-reason">У вас нет прав для просмотра этой панели управления.</p>
+    <button onclick="Telegram.WebApp.close()" class="btn btn-secondary mt-2">Закрыть</button>
+  </div>
+
+  <!-- Главное приложение -->
+  <div id="app" class="app-container hidden">
+    
+    <!-- Шапка панели -->
+    <header class="app-header">
+      <div class="header-main">
+        <div class="channel-info">
+          <div class="avatar-container">
+            <img src="logo.png" class="channel-avatar-img" alt="logo">
+          </div>
+          <div>
+            <h1 class="channel-title">Черный Синтез</h1>
+            <p class="channel-subtitle" id="channel-username">@loading...</p>
+          </div>
+        </div>
+        <div class="status-indicator">
+          <span class="pulse-dot active" id="bot-status-dot"></span>
+          <span id="bot-status-text">Инициализация...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Основной контейнер с табами -->
+    <main class="app-main">
+      
+      <!-- Секция 1: Обзор (Главная) -->
+      <section id="tab-overview" class="tab-content active">
+        <!-- Карточки метрик -->
+        <div class="metrics-grid">
+          <div class="metric-card glass">
+            <div class="metric-header">
+              <span class="metric-title">Подписчики</span>
+              <i class="fa-solid fa-users metric-icon blue"></i>
+            </div>
+            <div class="metric-value" id="metric-subscribers">0</div>
+            <div class="metric-change positive" id="metric-subscribers-change">
+              <i class="fa-solid fa-arrow-trend-up"></i> +0 сегодня
+            </div>
+          </div>
+
+          <div class="metric-card glass">
+            <div class="metric-header">
+              <span class="metric-title">Публикации</span>
+              <i class="fa-solid fa-file-invoice metric-icon purple"></i>
+            </div>
+            <div class="metric-value" id="metric-posts">0</div>
+            <div class="metric-change" id="metric-posts-change">
+              ИИ-генерация активна
+            </div>
+          </div>
+
+          <div class="metric-card glass">
+            <div class="metric-header">
+              <span class="metric-title">Доход с рекламы</span>
+              <i class="fa-solid fa-wallet metric-icon green"></i>
+            </div>
+            <div class="metric-value" id="metric-revenue">0 ₸</div>
+            <div class="metric-change positive" id="metric-revenue-change">
+              Рекламных постов: <span id="metric-ads-count">0</span>
+            </div>
+          </div>
+
+          <div class="metric-card glass">
+            <div class="metric-header">
+              <span class="metric-title">Комментарии</span>
+              <i class="fa-solid fa-comment-dots metric-icon orange"></i>
+            </div>
+            <div class="metric-value" id="metric-comments">0</div>
+            <div class="metric-change" id="metric-comments-sentiment">
+              Индекс настроения: <span id="metric-sentiment-index">Нейтральный</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Графики -->
+        <div class="charts-grid mt-2">
+          <div class="chart-container glass">
+            <h3>Рост аудитории канала</h3>
+            <div class="chart-wrapper">
+              <canvas id="subscribersChart"></canvas>
+            </div>
+          </div>
+          <div class="chart-container glass">
+            <h3>Тональность комментариев (Gemini AI)</h3>
+            <div class="chart-wrapper donut-wrapper">
+              <canvas id="sentimentChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Секция 2: Управление постами (ИИ черновики) -->
+      <section id="tab-posts" class="tab-content">
+        <div class="tab-header-actions">
+          <h2>Статьи и Черновики</h2>
+          <button class="btn btn-primary" id="btn-trigger-aggregation">
+            <i class="fa-solid fa-rotate"></i> Собрать новости и ИИ-посты
+          </button>
+        </div>
+
+        <!-- Переключатель фильтров постов -->
+        <div class="filter-bar glass mt-2">
+          <button class="filter-btn active" data-status="draft">Черновики</button>
+          <button class="filter-btn" data-status="scheduled">Запланированные</button>
+          <button class="filter-btn" data-status="published">Опубликованные</button>
+        </div>
+
+        <!-- Список постов -->
+        <div id="posts-list" class="posts-list mt-2">
+          <div class="no-data glass">
+            <i class="fa-solid fa-folder-open"></i>
+            <p>Нет постов в данной категории</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Секция 3: Рекламные заказы -->
+      <section id="tab-orders" class="tab-content">
+        <div class="tab-header-actions">
+          <h2>Реклама и Монетизация</h2>
+          <button class="btn btn-success" id="btn-open-order-modal">
+            <i class="fa-solid fa-plus"></i> Новый заказ
+          </button>
+        </div>
+
+        <!-- Карточки статистики доходов -->
+        <div class="ad-stats-card glass mt-2">
+          <div class="ad-stat-item">
+            <span class="label">Заработано всего</span>
+            <span class="value green-text" id="ad-total-revenue">0 ₸</span>
+          </div>
+          <div class="ad-stat-divider"></div>
+          <div class="ad-stat-item">
+            <span class="label">Активные заказы</span>
+            <span class="value" id="ad-active-orders">0</span>
+          </div>
+          <div class="ad-stat-divider"></div>
+          <div class="ad-stat-item">
+            <span class="label">Всего сделок</span>
+            <span class="value" id="ad-total-orders">0</span>
+          </div>
+        </div>
+
+        <!-- Таблица заказов -->
+        <div class="orders-table-container glass mt-2">
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th>Рекламодатель</th>
+                <th>Сумма (₸)</th>
+                <th>Дата публикации</th>
+                <th>Связанный пост</th>
+                <th>Статус</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody id="orders-list-body">
+              <tr>
+                <td colspan="6" class="text-center py-2">Заказы отсутствуют</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Секция 4: Комментарии и анализ тональности -->
+      <section id="tab-comments" class="tab-content">
+        <h2>Анализ тональности комментариев</h2>
+        <p class="section-description">Комментарии автоматически собираются из группы обсуждения и оцениваются ИИ Google Gemini.</p>
+        
+        <!-- Лента комментариев -->
+        <div id="comments-feed" class="comments-feed mt-2">
+          <div class="no-data glass">
+            <i class="fa-solid fa-comments"></i>
+            <p>Здесь будут отображаться комментарии ваших подписчиков</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Секция 5: Настройки бота -->
+      <section id="tab-settings" class="tab-content">
+        <h2>Настройки системы</h2>
+        
+        <form id="settings-form" class="settings-form mt-2">
+          
+          <div class="form-group glass">
+            <h3>Автономия и Автопостинг</h3>
+            <div class="toggle-control mt-1">
+              <div>
+                <label class="toggle-title">Полная автономия канала</label>
+                <p class="toggle-desc">Если включено, бот будет автоматически публиковать сгенерированные статьи. Если выключено — статьи сохраняются как «Черновики» для вашей ручной проверки.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="setting-auto-post">
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group glass mt-2">
+            <h3>Параметры интеграции</h3>
+            
+            <div class="input-field mt-1">
+              <label for="setting-channels-list">Список каналов для публикаций</label>
+              <input type="text" id="setting-channels-list" placeholder="@black_synthesis" required>
+              <span class="input-help">Укажите username или ID вашего канала.</span>
+            </div>
+
+            <div class="input-field mt-2">
+              <label for="setting-post-interval">Интервал автопубликаций (в часах)</label>
+              <select id="setting-post-interval">
+                <option value="4">Каждые 4 часа</option>
+                <option value="6" selected>Каждые 6 часов</option>
+                <option value="12">Каждые 12 часов</option>
+                <option value="24">Один раз в сутки</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group glass mt-2">
+            <h3>Тестовый режим (Демо)</h3>
+            <div class="toggle-control mt-1">
+              <div>
+                <label class="toggle-title">Использование симуляционных данных</label>
+                <p class="toggle-desc">Позволяет просматривать интерфейс с красивыми тестовыми статьями, графиками и комментариями без подключения реальных токенов бота и ИИ.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="setting-demo-mode" disabled>
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-actions mt-2">
+            <button type="submit" class="btn btn-primary btn-block">Сохранить настройки</button>
+          </div>
+        </form>
+      </section>
+
+    </main>
+
+    <!-- Нижняя навигация (Таб-бар) -->
+    <nav class="app-nav-bar glass">
+      <button class="nav-item active" data-tab="overview">
+        <i class="fa-solid fa-chart-line"></i>
+        <span>Обзор</span>
+      </button>
+      <button class="nav-item" data-tab="posts">
+        <i class="fa-solid fa-newspaper"></i>
+        <span>Посты</span>
+      </button>
+      <button class="nav-item" data-tab="orders">
+        <i class="fa-solid fa-handshake"></i>
+        <span>Реклама</span>
+      </button>
+      <button class="nav-item" data-tab="comments">
+        <i class="fa-solid fa-comments"></i>
+        <span>Отзывы</span>
+      </button>
+      <button class="nav-item" data-tab="settings">
+        <i class="fa-solid fa-sliders"></i>
+        <span>Настройки</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- Модальное окно создания рекламного заказа -->
+  <div id="order-modal" class="modal-overlay hidden">
+    <div class="modal-content glass">
+      <div class="modal-header">
+        <h2>Новый рекламный заказ</h2>
+        <button class="modal-close" id="btn-close-order-modal">&times;</button>
+      </div>
+      <form id="order-form" class="modal-body">
+        
+        <div class="input-field">
+          <label for="order-advertiser">Имя рекламодателя</label>
+          <input type="text" id="order-advertiser" placeholder="Например: ТОО КазФосфат" required>
+        </div>
+
+        <div class="input-field mt-2">
+          <label for="order-amount">Сумма оплаты (₸)</label>
+          <input type="number" id="order-amount" placeholder="50000" min="0" required>
+        </div>
+
+        <div class="input-field mt-2">
+          <label for="order-date">Дата и время публикации</label>
+          <input type="datetime-local" id="order-date" required>
+        </div>
+
+        <div class="divider mt-2"></div>
+        <h3 class="mt-2 text-sm font-bold">Контент рекламного поста</h3>
+
+        <div class="input-field mt-1">
+          <label for="order-post-title">Заголовок рекламного поста</label>
+          <input type="text" id="order-post-title" placeholder="Спецпроект: Минеральные удобрения..." required>
+        </div>
+
+        <div class="input-field mt-2">
+          <label for="order-post-content">Текст поста (Markdown)</label>
+          <textarea id="order-post-content" rows="6" placeholder="Введите рекламный текст здесь..." required></textarea>
+        </div>
+
+        <div class="input-field mt-2">
+          <label for="order-post-media">Ссылка на изображение (картинку)</label>
+          <input type="url" id="order-post-media" placeholder="https://images.unsplash.com/photo-...">
+        </div>
+
+        <div class="modal-footer mt-2">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-order">Отмена</button>
+          <button type="submit" class="btn btn-success">Запланировать и оплатить</button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- Модальное окно редактирования поста -->
+  <div id="post-modal" class="modal-overlay hidden">
+    <div class="modal-content glass">
+      <div class="modal-header">
+        <h2>Редактирование поста</h2>
+        <button class="modal-close" id="btn-close-post-modal">&times;</button>
+      </div>
+      <form id="post-edit-form" class="modal-body">
+        <input type="hidden" id="edit-post-id">
+        <input type="hidden" id="edit-post-status">
+
+        <div class="input-field">
+          <label for="edit-post-title">Заголовок поста</label>
+          <input type="text" id="edit-post-title" required>
+        </div>
+
+        <div class="input-field mt-2">
+          <label for="edit-post-content">Текст поста (Markdown)</label>
+          <textarea id="edit-post-content" rows="10" required></textarea>
+        </div>
+
+        <div class="input-field mt-2">
+          <label for="edit-post-media">Ссылка на изображение</label>
+          <input type="url" id="edit-post-media">
+        </div>
+
+        <div class="input-field mt-2" id="edit-schedule-field">
+          <label for="edit-post-schedule">Дата публикации (для запланированных постов)</label>
+          <input type="datetime-local" id="edit-post-schedule">
+        </div>
+
+        <div class="modal-footer mt-2">
+          <button type="button" class="btn btn-danger mr-auto" id="btn-delete-post">Удалить пост</button>
+          <button type="button" class="btn btn-secondary" id="btn-cancel-post-edit">Отмена</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-post">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
