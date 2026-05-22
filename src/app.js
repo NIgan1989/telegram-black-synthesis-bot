@@ -337,6 +337,96 @@ app.post('/api/settings', checkAuth, async (req, res) => {
   }
 });
 
+// 7b. Публичная форма заявки на рекламу (без авторизации)
+// Создаёт заказ со статусом 'pending', админ потом одобряет и переводит в 'paid'.
+app.post('/api/orders/request', async (req, res) => {
+  const { advertiser_name, contact, ad_text, desired_date, budget, telegram_user_id, telegram_username, honeypot } = req.body || {};
+
+  // Honeypot против ботов: поле должно быть пустым
+  if (honeypot) return res.json({ success: true });
+
+  if (!advertiser_name || !contact || !ad_text || ad_text.length < 20) {
+    return res.status(400).json({ error: 'Заполните название компании, контакт и описание рекламы (минимум 20 символов).' });
+  }
+  if (ad_text.length > 5000) {
+    return res.status(400).json({ error: 'Текст слишком длинный (макс 5000 символов).' });
+  }
+
+  try {
+    const publishDate = desired_date ? new Date(desired_date).toISOString() : new Date(Date.now() + 86400000).toISOString();
+    const amount = Number(budget) || 0;
+
+    const meta = [
+      `📞 Контакт: ${contact}`,
+      telegram_user_id ? `Telegram: @${telegram_username || ''} (id ${telegram_user_id})` : '',
+      desired_date ? `📅 Желаемая дата: ${publishDate}` : '',
+      budget ? `💰 Бюджет: ${budget} ₸` : ''
+    ].filter(Boolean).join('\n');
+
+    // Создаём связанный пост-заглушку с заявкой
+    const postRes = await db.run(
+      `INSERT INTO posts (title, content, status, type, scheduled_at)
+       VALUES (?, ?, 'draft', 'ad', ?)`,
+      [`[Заявка] ${advertiser_name}`, `${meta}\n\n---\n${ad_text}`, publishDate]
+    );
+
+    const orderRes = await db.run(
+      `INSERT INTO orders (advertiser_name, amount_paid, publish_date, post_id, status)
+       VALUES (?, ?, ?, ?, 'pending')`,
+      [advertiser_name, amount, publishDate, postRes.lastID]
+    );
+
+    // Уведомление админу в Telegram (если бот настроен)
+    try {
+      const botInstance = bot.getBotInstance();
+      const adminId = process.env.ADMIN_TELEGRAM_ID;
+      if (botInstance && adminId) {
+        const notify = `📨 *Новая заявка на рекламу*\n\n` +
+          `*Компания:* ${advertiser_name}\n` +
+          `*Контакт:* ${contact}\n` +
+          (budget ? `*Бюджет:* ${budget} ₸\n` : '') +
+          (desired_date ? `*Желаемая дата:* ${new Date(publishDate).toLocaleString('ru-RU')}\n` : '') +
+          `\n*Текст рекламы:*\n${ad_text.substring(0, 500)}${ad_text.length > 500 ? '...' : ''}\n\n` +
+          `Открой админку для одобрения.`;
+        botInstance.sendMessage(adminId, notify, { parse_mode: 'Markdown' }).catch(() => {
+          botInstance.sendMessage(adminId, notify.replace(/[*_`\[\]]/g, ''));
+        });
+      }
+    } catch (notifyErr) {
+      console.warn('⚠️ Не удалось отправить уведомление админу:', notifyErr.message);
+    }
+
+    res.json({ success: true, orderId: orderRes.lastID });
+  } catch (err) {
+    console.error('❌ Ошибка создания заявки:', err.message);
+    res.status(500).json({ error: 'Не удалось отправить заявку. Попробуйте позже.' });
+  }
+});
+
+// 7c. Одобрение pending-заказа (admin only)
+app.post('/api/orders/:id/approve', checkAuth, async (req, res) => {
+  const { id } = req.params;
+  const { amount_paid, publish_date } = req.body || {};
+  try {
+    const order = await db.get('SELECT * FROM orders WHERE id = ?', [id]);
+    if (!order) return res.status(404).json({ error: 'Заявка не найдена' });
+
+    const newAmount = amount_paid !== undefined ? amount_paid : order.amount_paid;
+    const newDate = publish_date || order.publish_date;
+
+    await db.run(
+      'UPDATE orders SET status = ?, amount_paid = ?, publish_date = ? WHERE id = ?',
+      ['paid', newAmount, newDate, id]
+    );
+    if (order.post_id) {
+      await db.run('UPDATE posts SET status = ?, scheduled_at = ? WHERE id = ?', ['scheduled', newDate, order.post_id]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7a. Генерация поста по произвольному промпту (на лету, без сохранения)
 app.post('/api/posts/generate', checkAuth, async (req, res) => {
   const { prompt, withChannelStyle } = req.body || {};

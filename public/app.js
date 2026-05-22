@@ -390,7 +390,9 @@ function renderOrdersTable(orders) {
     const statusClass = order.status;
 
     let actions = '';
-    if (order.status === 'paid') {
+    if (order.status === 'pending') {
+      actions = `<button class="btn btn-success btn-sm approve-order-btn" data-id="${order.id}">✓ Одобрить</button>`;
+    } else if (order.status === 'paid') {
       actions = `<button class="btn btn-secondary btn-sm complete-order-btn" data-id="${order.id}">✅ Выполнен</button>`;
     } else {
       actions = `<button class="btn btn-secondary btn-sm delete-order-btn" data-id="${order.id}" disabled>🗑️</button>`;
@@ -1107,7 +1109,7 @@ function attachOrderButtonsListeners() {
     btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-id');
       const order = state.orders.find(o => String(o.id) === String(id));
-      
+
       if (order) {
         tg.showConfirm('Вы действительно опубликовали пост и выполнили заказ?', async (confirmed) => {
           if (confirmed) {
@@ -1117,19 +1119,53 @@ function attachOrderButtonsListeners() {
               amount_paid: order.amount_paid,
               publish_date: order.publish_date
             };
-            
+
             const res = await fetch(`/api/orders/${id}`, {
               method: 'PUT',
               headers: getHeaders(),
               body: JSON.stringify(body)
             });
-            
+
             if (res.ok) {
               await refreshAllData();
             }
           }
         });
       }
+    });
+  });
+
+  document.querySelectorAll('.approve-order-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      const order = state.orders.find(o => String(o.id) === String(id));
+      if (!order) return;
+
+      tg.showConfirm(
+        `Одобрить заявку «${order.advertiser_name}»? Заказ переведётся в статус "Оплачен", связанный пост — в "Запланирован". Сумму и дату при необходимости отредактируешь в карточке заказа.`,
+        async (confirmed) => {
+          if (!confirmed) return;
+          btn.disabled = true;
+          btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+          try {
+            const res = await fetch(`/api/orders/${id}/approve`, {
+              method: 'POST',
+              headers: getHeaders(),
+              body: JSON.stringify({})
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || 'Ошибка одобрения');
+            }
+            tg.showPopup({ title: 'Готово', message: 'Заявка одобрена и запланирована', buttons: [{ type: 'ok' }] });
+            await refreshAllData();
+          } catch (e) {
+            tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+            btn.disabled = false;
+            btn.innerHTML = '✓ Одобрить';
+          }
+        }
+      );
     });
   });
 }

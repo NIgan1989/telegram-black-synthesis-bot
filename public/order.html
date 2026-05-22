@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Заказать рекламу — Чёрный Синтез</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .order-page {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    .order-hero {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .order-hero img {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      margin-bottom: 12px;
+    }
+    .order-hero h1 {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      margin: 0 0 6px;
+    }
+    .order-hero p {
+      opacity: 0.7;
+      font-size: 0.9rem;
+    }
+    .order-form {
+      padding: 20px;
+      border-radius: 16px;
+    }
+    .order-form h2 {
+      font-family: var(--font-heading);
+      font-size: 1.15rem;
+      margin: 0 0 12px;
+    }
+    .honeypot {
+      position: absolute;
+      left: -9999px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .success-card {
+      text-align: center;
+      padding: 30px 20px;
+    }
+    .success-card i {
+      font-size: 3rem;
+      color: var(--color-green, #34c759);
+      margin-bottom: 12px;
+    }
+    .pricing-block {
+      padding: 16px;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+    .pricing-block h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+    .pricing-block ul {
+      margin: 0;
+      padding-left: 20px;
+      opacity: 0.85;
+    }
+    .pricing-block li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container order-page">
+
+    <div class="order-hero">
+      <img src="logo.png" alt="Чёрный Синтез">
+      <h1>Реклама в «Чёрный Синтез»</h1>
+      <p>Канал для специалистов химической и нефтехимической отрасли Казахстана и СНГ</p>
+    </div>
+
+    <div class="pricing-block glass">
+      <h3>📊 Что можно рекламировать</h3>
+      <ul>
+        <li>Оборудование, реагенты, катализаторы</li>
+        <li>ИТ-решения и софт для промышленности</li>
+        <li>Конференции, выставки, обучение</li>
+        <li>Вакансии в отраслевых компаниях</li>
+        <li>Сервис, логистика, инжиниринг</li>
+      </ul>
+    </div>
+
+    <form id="order-form" class="order-form glass">
+      <h2>📝 Заявка на размещение</h2>
+
+      <div class="input-field">
+        <label for="advertiser_name">Компания или имя <span style="color:#ff453a">*</span></label>
+        <input type="text" id="advertiser_name" name="advertiser_name" required minlength="2" maxlength="100" placeholder="ТОО «КазХимПром»">
+      </div>
+
+      <div class="input-field mt-2">
+        <label for="contact">Контакт для связи <span style="color:#ff453a">*</span></label>
+        <input type="text" id="contact" name="contact" required maxlength="200" placeholder="@username, +7 700 000 0000 или email">
+        <span class="input-help">Telegram username, телефон или почта — как удобнее</span>
+      </div>
+
+      <div class="input-field mt-2">
+        <label for="ad_text">Текст рекламы или описание задачи <span style="color:#ff453a">*</span></label>
+        <textarea id="ad_text" name="ad_text" rows="6" required minlength="20" maxlength="5000" placeholder="Опишите, что хотите рекламировать, или вставьте готовый текст поста. Если нужна нативная статья от лица канала — опишите тезисы."></textarea>
+        <span class="input-help">Минимум 20 символов. Можно прислать готовый пост или просто опорные тезисы.</span>
+      </div>
+
+      <div class="input-field mt-2">
+        <label for="desired_date">Желаемая дата публикации (опционально)</label>
+        <input type="datetime-local" id="desired_date" name="desired_date">
+      </div>
+
+      <div class="input-field mt-2">
+        <label for="budget">Бюджет, ₸ (опционально)</label>
+        <input type="number" id="budget" name="budget" min="0" max="100000000" placeholder="50000">
+        <span class="input-help">Финальная цена обсуждается с админом</span>
+      </div>
+
+      <!-- Honeypot для ботов -->
+      <input type="text" name="honeypot" class="honeypot" tabindex="-1" autocomplete="off">
+
+      <div class="modal-footer mt-2">
+        <button type="submit" class="btn btn-success btn-block" id="submit-btn">
+          <i class="fa-solid fa-paper-plane"></i> Отправить заявку
+        </button>
+      </div>
+
+      <p style="text-align:center; opacity:0.6; font-size:0.8rem; margin-top:12px;">
+        После отправки админ свяжется с вами в течение суток для согласования деталей.
+      </p>
+    </form>
+
+    <div id="success-block" class="success-card glass hidden">
+      <i class="fa-solid fa-circle-check"></i>
+      <h2>Заявка отправлена!</h2>
+      <p>Админ получил уведомление и свяжется с вами в течение суток для уточнения деталей и согласования оплаты.</p>
+      <button type="button" class="btn btn-secondary mt-2" id="btn-close">Закрыть</button>
+    </div>
+
+  </div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    const form = document.getElementById('order-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const successBlock = document.getElementById('success-block');
+    const closeBtn = document.getElementById('btn-close');
+
+    // Префилл контактом из Telegram WebApp если открыто из Mini App
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      const u = tg.initDataUnsafe.user;
+      const contactField = document.getElementById('contact');
+      if (u.username) contactField.value = '@' + u.username;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form));
+
+      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+        data.telegram_user_id = tg.initDataUnsafe.user.id;
+        data.telegram_username = tg.initDataUnsafe.user.username || '';
+      }
+
+      const original = submitBtn.innerHTML;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Отправляем...';
+
+      try {
+        const res = await fetch('/api/orders/request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Ошибка отправки');
+
+        form.classList.add('hidden');
+        successBlock.classList.remove('hidden');
+      } catch (err) {
+        alert('Ошибка: ' + err.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = original;
+      }
+    });
+
+    closeBtn.addEventListener('click', () => {
+      if (tg) tg.close();
+      else window.history.back();
+    });
+  </script>
+</body>
+</html>

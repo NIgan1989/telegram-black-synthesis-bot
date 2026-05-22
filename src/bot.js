@@ -7,9 +7,25 @@ dotenv.config();
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const channelId = process.env.TELEGRAM_CHANNEL_ID;
+const adminTelegramId = process.env.ADMIN_TELEGRAM_ID;
+const adminUsername = (process.env.ADMIN_TELEGRAM_USERNAME || '').replace(/^@/, '');
+const webAppUrl = (process.env.WEBAPP_URL || '').replace(/\/$/, '');
 const isDemo = process.env.DEMO_MODE === 'true' || !token || !channelId;
 
 let bot = null;
+let commandsRegistered = false;
+
+function getChannelUrl() {
+  if (!channelId) return '';
+  if (String(channelId).startsWith('@')) return `https://t.me/${String(channelId).slice(1)}`;
+  return '';
+}
+
+function getAdminContactUrl() {
+  if (adminUsername) return `https://t.me/${adminUsername}`;
+  if (adminTelegramId) return `tg://user?id=${adminTelegramId}`;
+  return '';
+}
 
 // Инициализация бота
 function initBot() {
@@ -21,8 +37,8 @@ function initBot() {
   try {
     // В Vercel (продакшене) мы НЕ используем polling, а используем webhooks.
     // На локальном компьютере используем polling для удобства тестирования.
-    const usePolling = !process.env.DATABASE_URL; // Если есть DATABASE_URL (Supabase), то это прод/Vercel
-    
+    const usePolling = !process.env.DATABASE_URL;
+
     if (usePolling) {
       console.log('🤖 Telegram: Запуск бота в режиме Long Polling (локально)...');
       bot = new TelegramBot(token, { polling: true });
@@ -31,16 +47,21 @@ function initBot() {
       bot = new TelegramBot(token, { polling: false });
     }
 
-    // Слушатель входящих сообщений (для комментариев в группе обсуждения)
     bot.on('message', async (msg) => {
-      await handleIncomingMessage(msg);
+      try { await handleIncomingMessage(msg); }
+      catch (e) { console.error('❌ message handler error:', e.message); }
     });
 
-    // Обработка ошибок
+    bot.on('callback_query', async (cbq) => {
+      try { await handleCallbackQuery(cbq); }
+      catch (e) { console.error('❌ callback_query handler error:', e.message); }
+    });
+
     bot.on('polling_error', (error) => {
       console.error('❌ Telegram Polling Error:', error.message);
     });
 
+    registerBotCommands();
   } catch (error) {
     console.error('❌ Ошибка при инициализации Telegram Bot API:', error.message);
   }
@@ -48,59 +69,291 @@ function initBot() {
   return bot;
 }
 
-// Обработка входящих сообщений (отслеживание комментариев)
+async function registerBotCommands() {
+  if (commandsRegistered || !bot) return;
+  commandsRegistered = true;
+  try {
+    await bot.setMyCommands([
+      { command: 'start', description: 'Информация о канале' },
+      { command: 'about', description: 'О канале «Чёрный Синтез»' },
+      { command: 'order', description: 'Заказать рекламу' },
+      { command: 'help', description: 'Список команд' }
+    ]);
+    console.log('✅ Команды бота зарегистрированы в Telegram');
+  } catch (e) {
+    console.error('❌ Не удалось зарегистрировать команды:', e.message);
+  }
+}
+
+// Маршрутизация входящих сообщений: команды vs комментарии
 async function handleIncomingMessage(msg) {
-  if (!msg.text) return;
+  const text = msg.text || msg.caption;
+  if (!text) return;
 
-  // В Telegram комментарии к постам канала публикуются в привязанной супергруппе.
-  // Сообщение-комментарий является ответом (reply) на автоматически пересланный пост из канала.
+  if (text.startsWith('/')) {
+    await handleCommand(msg, text);
+    return;
+  }
+
   const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-  
   if (isGroup && msg.reply_to_message) {
-    const replyTo = msg.reply_to_message;
-    
-    // Проверяем, переслано ли сообщение из нашего канала
-    const isFromChannel = replyTo.forward_from_chat && 
-      (String(replyTo.forward_from_chat.id) === String(channelId) || 
-       replyTo.forward_from_chat.username === String(channelId).replace('@', ''));
+    await handleGroupComment(msg);
+  }
+}
 
-    if (isFromChannel) {
-      const channelPostId = replyTo.forward_from_message_id;
-      const username = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name} ${msg.from.last_name || ''}`.trim();
-      const commentText = msg.text;
-      const tgMsgId = msg.message_id;
+// Команды бота
+async function handleCommand(msg, text) {
+  const fromId = msg.from ? String(msg.from.id) : '';
+  const isAdmin = adminTelegramId && fromId === String(adminTelegramId);
+  const chatId = msg.chat.id;
+  const isPrivate = msg.chat.type === 'private';
 
-      console.log(`💬 Бот: Обнаружен новый комментарий от ${username} к посту #${channelPostId}: "${commentText}"`);
+  // /command или /command@botname — извлекаем чистое имя
+  const [rawCmd, ...args] = text.split(/\s+/);
+  const command = rawCmd.toLowerCase().split('@')[0];
+  const argText = args.join(' ');
 
-      // 1. Анализируем тональность комментария через Gemini ИИ
-      const sentiment = await gemini.analyzeSentiment(commentText);
-      console.log(`🧠 ИИ: Тональность комментария — ${sentiment}`);
-
-      // 2. Ищем пост в нашей базе данных по telegram_message_id (channelPostId)
-      try {
-        const post = await db.get('SELECT id FROM posts WHERE telegram_message_id = ? LIMIT 1', [channelPostId]);
-        const internalPostId = post ? post.id : null;
-
-        // Записываем комментарий в БД
-        const insertQuery = `
-          INSERT INTO comments (telegram_message_id, post_id, username, text, sentiment, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `;
-        const createdAt = new Date().toISOString();
-        await db.run(insertQuery, [tgMsgId, internalPostId, username, commentText, sentiment, createdAt]);
-
-        // Обновим вовлеченность (active_engagement) в статистике за сегодняшний день
-        const today = new Date().toISOString().split('T')[0];
-        await db.run(`
-          INSERT INTO stats (date, active_engagement)
-          VALUES (?, 1)
-          ON CONFLICT(date) DO UPDATE SET active_engagement = stats.active_engagement + 1
-        `, [today]);
-
-      } catch (err) {
-        console.error('❌ Ошибка записи комментария в БД:', err.message);
+  switch (command) {
+    case '/start':
+      return sendStartMessage(chatId, isAdmin);
+    case '/about':
+      return sendAboutMessage(chatId);
+    case '/help':
+      return sendHelpMessage(chatId, isAdmin);
+    case '/order':
+      return sendOrderMessage(chatId, msg.from);
+    case '/admin':
+      if (!isAdmin) return safeSend(chatId, '⛔ Команда доступна только администратору канала.');
+      return sendAdminMessage(chatId);
+    case '/stats':
+      if (!isAdmin) return safeSend(chatId, '⛔ Команда доступна только администратору канала.');
+      return sendStatsMessage(chatId);
+    default:
+      if (isPrivate) {
+        return safeSend(chatId, `Неизвестная команда ${command}. Используй /help для списка команд.`);
       }
+  }
+}
+
+async function handleCallbackQuery(cbq) {
+  const data = cbq.data || '';
+  const chatId = cbq.message ? cbq.message.chat.id : (cbq.from ? cbq.from.id : null);
+  if (!chatId) return;
+
+  await bot.answerCallbackQuery(cbq.id).catch(() => {});
+
+  const isAdmin = adminTelegramId && cbq.from && String(cbq.from.id) === String(adminTelegramId);
+
+  if (data === 'order') return sendOrderMessage(chatId, cbq.from);
+  if (data === 'help') return sendHelpMessage(chatId, isAdmin);
+  if (data === 'about') return sendAboutMessage(chatId);
+}
+
+// Безопасная отправка с фоллбэком на plain text если Markdown не парсится
+async function safeSend(chatId, text, options = {}) {
+  if (!bot) return null;
+  try {
+    return await bot.sendMessage(chatId, text, options);
+  } catch (e) {
+    if (options.parse_mode && /can't parse entities|Bad Request: can't parse/i.test(e.message)) {
+      const { parse_mode, ...rest } = options;
+      console.warn(`⚠️ Markdown не распознан, повтор без parse_mode: ${e.message}`);
+      return bot.sendMessage(chatId, text, rest);
     }
+    console.error('❌ Ошибка отправки сообщения:', e.message);
+    return null;
+  }
+}
+
+// Тексты команд
+async function sendStartMessage(chatId, isAdmin) {
+  const channelUrl = getChannelUrl();
+  const text = `👋 *Добро пожаловать!*
+
+*Чёрный Синтез* — аналитический канал о химической и нефтехимической промышленности Казахстана и стран СНГ.
+
+📊 *Здесь:*
+• Анализ ключевых событий отрасли
+• Технологии переработки и синтеза
+• Обзоры рынка полимеров и удобрений
+• Новости заводов и кластеров
+
+Подпишись и поделись с коллегами.`;
+
+  const buttons = [];
+  if (channelUrl) buttons.push([{ text: '📢 Открыть канал', url: channelUrl }]);
+  buttons.push([
+    { text: '📝 Заказать рекламу', callback_data: 'order' },
+    { text: '❓ Помощь', callback_data: 'help' }
+  ]);
+  if (isAdmin && webAppUrl) {
+    buttons.push([{ text: '🛠 Открыть админку', web_app: { url: webAppUrl } }]);
+  }
+
+  return safeSend(chatId, text, {
+    parse_mode: 'Markdown',
+    reply_markup: { inline_keyboard: buttons }
+  });
+}
+
+async function sendAboutMessage(chatId) {
+  const text = `🏭 *О канале «Чёрный Синтез»*
+
+Канал ведёт отраслевая команда аналитиков. Здесь публикуются:
+
+⚙️ *Технологии:* каталитические процессы, полимеризация, дегидрирование, переработка газа и нефти.
+
+📈 *Рынки:* динамика цен на полипропилен, ПЭ, ПВХ, аммиак, карбамид и азотные удобрения.
+
+🌍 *Регион:* Казахстан, Узбекистан, Россия, Беларусь — крупные проекты, модернизации НПЗ, химкластеры.
+
+🤖 *ИИ-аналитика:* посты готовятся с помощью Google Gemini, тональность комментариев анализируется автоматически.
+
+📩 Для сотрудничества и рекламы — команда /order.`;
+
+  return safeSend(chatId, text, { parse_mode: 'Markdown' });
+}
+
+async function sendHelpMessage(chatId, isAdmin) {
+  const lines = [
+    '🤖 *Команды бота*',
+    '',
+    '/start — приветствие и быстрый старт',
+    '/about — подробнее о канале',
+    '/order — заказать рекламу',
+    '/help — этот список'
+  ];
+  if (isAdmin) {
+    lines.push('', '🛠 *Для администратора:*', '/admin — открыть админ-панель', '/stats — быстрая статистика');
+  }
+  return safeSend(chatId, lines.join('\n'), { parse_mode: 'Markdown' });
+}
+
+async function sendOrderMessage(chatId, fromUser) {
+  const text = `📢 *Реклама в канале «Чёрный Синтез»*
+
+Канал читают специалисты химической и нефтехимической отрасли Казахстана и СНГ. Здесь покупают рекламу:
+
+• Производители оборудования и реагентов
+• ИТ-решения для промышленности
+• Образовательные программы и конференции
+• Вакансии в крупных компаниях отрасли
+• Логистика и сервис
+
+📝 *Как заказать:*
+1. Напиши админу с описанием задачи
+2. Согласуй текст, изображение и дату
+3. После оплаты пост публикуется в выбранное время
+
+💡 Возможен как готовый пост (твой материал), так и нативная статья от лица канала (ИИ-генерация с твоими тезисами).`;
+
+  const adminContact = getAdminContactUrl();
+  const buttons = [];
+  if (webAppUrl) {
+    buttons.push([{ text: '📝 Заполнить заявку', web_app: { url: `${webAppUrl}/order.html` } }]);
+  }
+  if (adminContact) buttons.push([{ text: '💬 Написать админу', url: adminContact }]);
+
+  // Уведомление админу о входящем интересе к рекламе
+  if (adminTelegramId && fromUser && String(fromUser.id) !== String(adminTelegramId)) {
+    const who = fromUser.username
+      ? `@${fromUser.username}`
+      : `${fromUser.first_name || ''} ${fromUser.last_name || ''}`.trim() || `ID ${fromUser.id}`;
+    const notify = `📨 Новый интерес к рекламе:\n${who} (id: ${fromUser.id})\nКоманда /order в боте.`;
+    safeSend(adminTelegramId, notify).catch(() => {});
+  }
+
+  return safeSend(chatId, text, {
+    parse_mode: 'Markdown',
+    reply_markup: buttons.length ? { inline_keyboard: buttons } : undefined
+  });
+}
+
+async function sendAdminMessage(chatId) {
+  if (!webAppUrl) {
+    return safeSend(chatId, '⚠️ WEBAPP_URL не задан в env-переменных Vercel. Открыть Mini App не получится — настрой переменную и сделай Redeploy.');
+  }
+  return safeSend(chatId, '🛠 *Админ-панель*\n\nУправление каналом, постами, заказами и статистикой.', {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [[{ text: 'Открыть админку', web_app: { url: webAppUrl } }]]
+    }
+  });
+}
+
+async function sendStatsMessage(chatId) {
+  try {
+    const subs = await getSubscriberCount().catch(() => 0);
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+
+    const publishedToday = await db.get(
+      "SELECT COUNT(*) AS count FROM posts WHERE status = ? AND published_at >= ? AND published_at <= ?",
+      ['published', todayStart.toISOString(), todayEnd.toISOString()]
+    );
+    const drafts = await db.get("SELECT COUNT(*) AS count FROM posts WHERE status = ?", ['draft']);
+    const scheduled = await db.get("SELECT COUNT(*) AS count FROM posts WHERE status = ?", ['scheduled']);
+    const pendingOrders = await db.get("SELECT COUNT(*) AS count FROM orders WHERE status = ?", ['pending']);
+    const paidOrders = await db.get("SELECT COUNT(*) AS count FROM orders WHERE status = ?", ['paid']);
+    const totalRevenue = await db.get("SELECT COALESCE(SUM(amount_paid), 0) AS total FROM orders WHERE status IN ('paid', 'completed')");
+
+    const text = `📊 *Статистика «Чёрный Синтез»*
+
+👥 Подписчики: *${subs}*
+📝 Опубликовано сегодня: *${publishedToday ? publishedToday.count : 0}*
+📂 Черновиков в очереди: *${drafts ? drafts.count : 0}*
+⏰ Запланировано: *${scheduled ? scheduled.count : 0}*
+
+💼 *Реклама*
+📨 Заявок ожидает: *${pendingOrders ? pendingOrders.count : 0}*
+✅ Активных заказов: *${paidOrders ? paidOrders.count : 0}*
+💰 Заработано: *${totalRevenue ? Number(totalRevenue.total).toLocaleString('ru-RU') : 0} ₸*`;
+
+    return safeSend(chatId, text, { parse_mode: 'Markdown' });
+  } catch (e) {
+    return safeSend(chatId, '⚠️ Ошибка получения статистики: ' + e.message);
+  }
+}
+
+// Существующая логика — отслеживание комментариев в группе обсуждения
+async function handleGroupComment(msg) {
+  const replyTo = msg.reply_to_message;
+
+  const isFromChannel = replyTo.forward_from_chat &&
+    (String(replyTo.forward_from_chat.id) === String(channelId) ||
+     replyTo.forward_from_chat.username === String(channelId).replace('@', ''));
+
+  if (!isFromChannel) return;
+
+  const channelPostId = replyTo.forward_from_message_id;
+  const username = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name} ${msg.from.last_name || ''}`.trim();
+  const commentText = msg.text;
+  const tgMsgId = msg.message_id;
+
+  console.log(`💬 Комментарий от ${username} к посту #${channelPostId}: "${commentText}"`);
+
+  const sentiment = await gemini.analyzeSentiment(commentText);
+  console.log(`🧠 Тональность: ${sentiment}`);
+
+  try {
+    const post = await db.get('SELECT id FROM posts WHERE telegram_message_id = ? LIMIT 1', [channelPostId]);
+    const internalPostId = post ? post.id : null;
+
+    const createdAt = new Date().toISOString();
+    await db.run(
+      `INSERT INTO comments (telegram_message_id, post_id, username, text, sentiment, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [tgMsgId, internalPostId, username, commentText, sentiment, createdAt]
+    );
+
+    const today = new Date().toISOString().split('T')[0];
+    await db.run(`
+      INSERT INTO stats (date, active_engagement)
+      VALUES (?, 1)
+      ON CONFLICT(date) DO UPDATE SET active_engagement = stats.active_engagement + 1
+    `, [today]);
+  } catch (err) {
+    console.error('❌ Ошибка записи комментария в БД:', err.message);
   }
 }
 
@@ -126,20 +379,27 @@ async function publishPost(post) {
   }
 
   try {
-    let resultMessage = null;
     const formattedContent = `*${post.title}*\n\n${post.content}`;
+    const hasMedia = post.media_url && post.media_url.trim().startsWith('http');
 
-    if (post.media_url && post.media_url.trim().startsWith('http')) {
-      // Отправляем фото с подписью
-      resultMessage = await bot.sendPhoto(channelId, post.media_url, {
-        caption: formattedContent,
-        parse_mode: 'Markdown'
-      });
-    } else {
-      // Отправляем текстовое сообщение
-      resultMessage = await bot.sendMessage(channelId, formattedContent, {
-        parse_mode: 'Markdown'
-      });
+    const send = async (useMarkdown) => {
+      const opts = useMarkdown ? { parse_mode: 'Markdown' } : {};
+      if (hasMedia) {
+        return bot.sendPhoto(channelId, post.media_url, { caption: formattedContent, ...opts });
+      }
+      return bot.sendMessage(channelId, formattedContent, opts);
+    };
+
+    let resultMessage;
+    try {
+      resultMessage = await send(true);
+    } catch (e) {
+      if (/can't parse entities|Bad Request: can't parse/i.test(e.message)) {
+        console.warn(`⚠️ Markdown поста #${post.id} не распознан, публикую без форматирования.`);
+        resultMessage = await send(false);
+      } else {
+        throw e;
+      }
     }
 
     const tgMessageId = resultMessage.message_id;
