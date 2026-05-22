@@ -1,20 +1,13 @@
-const { GoogleGenAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const dotenv = require('dotenv');
 
 dotenv.config();
 
 const isDemo = process.env.DEMO_MODE === 'true' || !process.env.GEMINI_API_KEY;
 
-// Инициализация API
 let genAI = null;
 if (!isDemo) {
-  // Обратите внимание: в новой версии SDK используется конструктор GoogleGenAI
-  // или стандартный import { GoogleGenAI } from '@google/generative-ai';
-  // Также может использоваться const { GoogleGenAI } = ... или const { GoogleGenerativeAI } = ...
-  // Давай сделаем универсальный импорт на случай разных версий SDK:
   try {
-    const SDK = require('@google/generative-ai');
-    const GoogleGenerativeAI = SDK.GoogleGenerativeAI || SDK.GoogleGenAI;
     genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
   } catch (e) {
     console.error('❌ Инициализация Gemini SDK не удалась:', e.message);

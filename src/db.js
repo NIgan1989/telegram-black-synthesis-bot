@@ -111,7 +111,8 @@ async function init() {
       scheduled_at TIMESTAMP,
       published_at TIMESTAMP,
       type VARCHAR(20) DEFAULT 'organic',
-      views INTEGER DEFAULT 0
+      views INTEGER DEFAULT 0,
+      telegram_message_id BIGINT
     );
   ` : `
     CREATE TABLE IF NOT EXISTS posts (
@@ -123,7 +124,8 @@ async function init() {
       scheduled_at TEXT,
       published_at TEXT,
       type TEXT DEFAULT 'organic',
-      views INTEGER DEFAULT 0
+      views INTEGER DEFAULT 0,
+      telegram_message_id INTEGER
     );
   `;
 
@@ -202,6 +204,7 @@ async function init() {
     await run(commentsSchema);
     await run(statsSchema);
     await run(settingsSchema);
+    await migrateAddTelegramMessageId();
     console.log('✅ DB: Все таблицы успешно инициализированы.');
 
     // Автоматическое заполнение демо-данными при первом запуске
@@ -210,6 +213,20 @@ async function init() {
     }
   } catch (err) {
     console.error('❌ DB: Ошибка инициализации таблиц базы данных:', err.message);
+  }
+}
+
+// Миграция: добавляет колонку telegram_message_id в таблицу posts, если её ещё нет.
+// PostgreSQL поддерживает IF NOT EXISTS, для SQLite ловим ошибку "duplicate column".
+async function migrateAddTelegramMessageId() {
+  if (isProd) {
+    await run('ALTER TABLE posts ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT');
+    return;
+  }
+  try {
+    await run('ALTER TABLE posts ADD COLUMN telegram_message_id INTEGER');
+  } catch (err) {
+    if (!/duplicate column/i.test(err.message)) throw err;
   }
 }
 

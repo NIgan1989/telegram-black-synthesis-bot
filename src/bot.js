@@ -78,8 +78,7 @@ async function handleIncomingMessage(msg) {
 
       // 2. Ищем пост в нашей базе данных по telegram_message_id (channelPostId)
       try {
-        const post = await db.get('SELECT id FROM posts WHERE views >= 0 AND (views = ? OR id IN (SELECT id FROM posts WHERE views = ?)) LIMIT 1', [channelPostId, channelPostId]);
-        // В нашей структуре: свяжем комментарий с постом
+        const post = await db.get('SELECT id FROM posts WHERE telegram_message_id = ? LIMIT 1', [channelPostId]);
         const internalPostId = post ? post.id : null;
 
         // Записываем комментарий в БД
@@ -112,11 +111,11 @@ async function publishPost(post) {
     
     // Имитируем успешную отправку, возвращаем случайный Telegram Message ID
     const fakeTgMsgId = Math.floor(Math.random() * 100000) + 1;
-    
+
     // Обновим пост в базе как опубликованный
     const now = new Date().toISOString();
     await db.run(
-      'UPDATE posts SET status = ?, published_at = ?, views = ? WHERE id = ?',
+      'UPDATE posts SET status = ?, published_at = ?, telegram_message_id = ? WHERE id = ?',
       ['published', now, fakeTgMsgId, post.id]
     );
 
@@ -146,10 +145,9 @@ async function publishPost(post) {
     const tgMessageId = resultMessage.message_id;
     console.log(`✅ Пост #${post.id} успешно опубликован в Telegram. Message ID: ${tgMessageId}`);
 
-    // Обновляем статус и ID сообщения в БД (используем поле views для хранения Telegram Message ID)
     const now = new Date().toISOString();
     await db.run(
-      'UPDATE posts SET status = ?, published_at = ?, views = ? WHERE id = ?',
+      'UPDATE posts SET status = ?, published_at = ?, telegram_message_id = ? WHERE id = ?',
       ['published', now, tgMessageId, post.id]
     );
 
