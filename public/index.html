@@ -127,9 +127,14 @@
       <section id="tab-posts" class="tab-content">
         <div class="tab-header-actions">
           <h2>Статьи и Черновики</h2>
-          <button class="btn btn-primary" id="btn-trigger-aggregation">
-            <i class="fa-solid fa-rotate"></i> Собрать новости и ИИ-посты
-          </button>
+          <div class="header-buttons-row">
+            <button class="btn btn-success" id="btn-open-ai-prompt-modal">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> ИИ-пост по промпту
+            </button>
+            <button class="btn btn-primary" id="btn-trigger-aggregation">
+              <i class="fa-solid fa-rotate"></i> Собрать новости
+            </button>
+          </div>
         </div>
 
         <!-- Переключатель фильтров постов -->
@@ -387,6 +392,87 @@
           <button type="submit" class="btn btn-primary" id="btn-save-post">Сохранить</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Модальное окно генерации поста по промпту -->
+  <div id="ai-prompt-modal" class="modal-overlay hidden">
+    <div class="modal-content glass">
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-wand-magic-sparkles"></i> ИИ-генерация поста</h2>
+        <button class="modal-close" id="btn-close-ai-modal">&times;</button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- Стадия 1: Ввод промпта -->
+        <div id="ai-stage-prompt">
+          <div class="input-field">
+            <label for="ai-user-prompt">Что написать?</label>
+            <textarea id="ai-user-prompt" rows="5" placeholder="Например: «Напиши новость про запуск установки по производству карбамида в Жанаозене с техническими подробностями процесса и анализом влияния на рынок удобрений СНГ»"></textarea>
+            <span class="input-help">Опиши тему, контекст и акценты. Gemini напишет пост в стиле канала с разметкой Markdown и хэштегами.</span>
+          </div>
+
+          <div class="form-group glass mt-2" style="padding: 12px;">
+            <div class="toggle-control">
+              <div>
+                <label class="toggle-title">Стиль канала «Чёрный Синтез»</label>
+                <p class="toggle-desc">Экспертный аналитический тон, фокус на химпром Казахстана и СНГ. Выключи для свободного стиля.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="ai-with-channel-style" checked>
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="modal-footer mt-2">
+            <button type="button" class="btn btn-secondary" id="btn-cancel-ai">Отмена</button>
+            <button type="button" class="btn btn-primary" id="btn-generate-ai">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Сгенерировать
+            </button>
+          </div>
+        </div>
+
+        <!-- Стадия 2: Редактирование результата -->
+        <div id="ai-stage-result" class="hidden">
+          <div class="input-field">
+            <label for="ai-result-title">Заголовок</label>
+            <input type="text" id="ai-result-title">
+          </div>
+
+          <div class="input-field mt-2">
+            <label for="ai-result-content">Текст поста (Markdown)</label>
+            <textarea id="ai-result-content" rows="12"></textarea>
+          </div>
+
+          <div class="input-field mt-2">
+            <label for="ai-result-media">Ссылка на изображение (опционально)</label>
+            <input type="url" id="ai-result-media" placeholder="https://...">
+          </div>
+
+          <div class="input-field mt-2 hidden" id="ai-schedule-field">
+            <label for="ai-result-schedule">Дата и время публикации</label>
+            <input type="datetime-local" id="ai-result-schedule">
+          </div>
+
+          <div class="modal-footer mt-2 ai-actions-row">
+            <button type="button" class="btn btn-secondary" id="btn-ai-back-to-prompt" title="Изменить промпт и сгенерировать заново">
+              <i class="fa-solid fa-rotate-left"></i> Назад
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-ai-save-draft">
+              <i class="fa-solid fa-floppy-disk"></i> В черновики
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-ai-schedule">
+              <i class="fa-solid fa-clock"></i> Запланировать
+            </button>
+            <button type="button" class="btn btn-success" id="btn-ai-publish">
+              <i class="fa-solid fa-paper-plane"></i> Опубликовать сейчас
+            </button>
+          </div>
+        </div>
+
+      </div>
     </div>
   </div>
 

@@ -160,7 +160,76 @@ function mockAnalyzeSentiment(commentText) {
   return 'neutral';
 }
 
+// Генерация поста по произвольному запросу пользователя
+async function generatePostFromPrompt(userPrompt, options = {}) {
+  const { withChannelStyle = true } = options;
+
+  if (isDemo) {
+    return mockGenerateFromPrompt(userPrompt, withChannelStyle);
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING', description: 'Краткий цепляющий заголовок поста на русском' },
+            content: { type: 'STRING', description: 'Основной текст поста с Markdown-разметкой и хэштегами' }
+          },
+          required: ['title', 'content']
+        }
+      }
+    });
+
+    const channelStyle = withChannelStyle ? `СТИЛЬ КАНАЛА:
+Ты пишешь для Telegram-канала «Чёрный Синтез» — отраслевого канала о химической и нефтехимической промышленности Казахстана и стран СНГ.
+Голос канала: экспертный, аналитический, с техническими деталями (катализаторы, процессы полимеризации, переработка углеводородов, производство удобрений и полимеров).
+Региональный контекст: Казахстан, Узбекистан, Россия, Беларусь и другие страны СНГ.
+` : '';
+
+    const prompt = `${channelStyle}
+ЗАДАНИЕ ОТ РЕДАКТОРА:
+${userPrompt}
+
+ТРЕБОВАНИЯ К ПОСТУ:
+1. Язык: русский.
+2. Форматирование: Markdown (жирный *...*, курсив _..._, абзацы, маркированные списки).
+3. Эмодзи в начале ключевых блоков (1-2 на абзац, не злоупотребляй).
+4. В конце — 3-5 уместных хэштегов.
+5. Длина: 800-2000 символов.
+6. Не пиши никаких пояснений до или после JSON — верни строго JSON по схеме.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    return JSON.parse(text);
+  } catch (error) {
+    console.error('❌ Ошибка генерации поста через Gemini:', error.message);
+    return mockGenerateFromPrompt(userPrompt, withChannelStyle);
+  }
+}
+
+function mockGenerateFromPrompt(userPrompt, withChannelStyle) {
+  const shortPrompt = userPrompt.length > 60 ? userPrompt.slice(0, 57) + '...' : userPrompt;
+  const styleNote = withChannelStyle
+    ? '*Аналитика отрасли | Канал «Чёрный Синтез»*\n\n'
+    : '';
+
+  const content = `${styleNote}_(Демо-режим: реальная генерация недоступна — нет GEMINI_API_KEY или включён DEMO_MODE)_
+
+📝 **Запрос редактора:** ${userPrompt}
+
+В продакшене на этом месте окажется полноценный экспертный пост, написанный Gemini под заданную тему с техническими подробностями, региональным контекстом и форматированием в стиле канала.
+
+#ЧерныйСинтез #демо #ИИ_генерация`;
+
+  return { title: shortPrompt, content };
+}
+
 module.exports = {
   generateArticle,
-  analyzeSentiment
+  analyzeSentiment,
+  generatePostFromPrompt
 };

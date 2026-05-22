@@ -780,7 +780,7 @@ function initEventHandlers() {
   const deletePostBtn = document.getElementById('btn-delete-post');
   deletePostBtn.addEventListener('click', async () => {
     const id = document.getElementById('edit-post-id').value;
-    
+
     tg.showConfirm('Вы уверены, что хотите безвозвратно удалить этот пост?', async (confirmed) => {
       if (confirmed) {
         try {
@@ -802,6 +802,183 @@ function initEventHandlers() {
             buttons: [{ type: 'close' }]
           });
         }
+      }
+    });
+  });
+
+  // 6. Модальное окно генерации поста по промпту (ИИ)
+  initAiPromptModal();
+}
+
+function initAiPromptModal() {
+  const aiModal = document.getElementById('ai-prompt-modal');
+  const stagePrompt = document.getElementById('ai-stage-prompt');
+  const stageResult = document.getElementById('ai-stage-result');
+  const scheduleField = document.getElementById('ai-schedule-field');
+
+  const openBtn = document.getElementById('btn-open-ai-prompt-modal');
+  const closeBtn = document.getElementById('btn-close-ai-modal');
+  const cancelBtn = document.getElementById('btn-cancel-ai');
+  const generateBtn = document.getElementById('btn-generate-ai');
+  const backBtn = document.getElementById('btn-ai-back-to-prompt');
+  const saveDraftBtn = document.getElementById('btn-ai-save-draft');
+  const scheduleBtn = document.getElementById('btn-ai-schedule');
+  const publishBtn = document.getElementById('btn-ai-publish');
+
+  const promptInput = document.getElementById('ai-user-prompt');
+  const styleToggle = document.getElementById('ai-with-channel-style');
+  const titleInput = document.getElementById('ai-result-title');
+  const contentInput = document.getElementById('ai-result-content');
+  const mediaInput = document.getElementById('ai-result-media');
+  const scheduleInput = document.getElementById('ai-result-schedule');
+
+  function resetModal() {
+    stagePrompt.classList.remove('hidden');
+    stageResult.classList.add('hidden');
+    scheduleField.classList.add('hidden');
+    promptInput.value = '';
+    titleInput.value = '';
+    contentInput.value = '';
+    mediaInput.value = '';
+    scheduleInput.value = '';
+    styleToggle.checked = true;
+  }
+
+  function closeModal() {
+    aiModal.classList.add('hidden');
+    resetModal();
+  }
+
+  function showStage(name) {
+    if (name === 'prompt') {
+      stagePrompt.classList.remove('hidden');
+      stageResult.classList.add('hidden');
+    } else {
+      stagePrompt.classList.add('hidden');
+      stageResult.classList.remove('hidden');
+    }
+  }
+
+  async function generate() {
+    const prompt = promptInput.value.trim();
+    if (prompt.length < 5) {
+      tg.showPopup({ title: 'Промпт слишком короткий', message: 'Минимум 5 символов', buttons: [{ type: 'ok' }] });
+      return;
+    }
+    const withChannelStyle = styleToggle.checked;
+    const orig = generateBtn.innerHTML;
+    generateBtn.disabled = true;
+    generateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gemini думает...';
+
+    try {
+      const res = await fetch('/api/posts/generate', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ prompt, withChannelStyle })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
+
+      titleInput.value = data.title || '';
+      contentInput.value = data.content || '';
+      showStage('result');
+    } catch (e) {
+      tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.innerHTML = orig;
+    }
+  }
+
+  async function savePost(status, scheduledAt) {
+    const body = {
+      title: titleInput.value.trim(),
+      content: contentInput.value.trim(),
+      media_url: mediaInput.value.trim() || null,
+      status,
+      scheduled_at: scheduledAt || null,
+      type: 'organic'
+    };
+    if (!body.title || !body.content) {
+      throw new Error('Заголовок и текст обязательны');
+    }
+    const res = await fetch('/api/posts', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Не удалось сохранить пост');
+    return data;
+  }
+
+  openBtn.addEventListener('click', () => {
+    resetModal();
+    aiModal.classList.remove('hidden');
+  });
+  closeBtn.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
+  generateBtn.addEventListener('click', generate);
+  backBtn.addEventListener('click', () => showStage('prompt'));
+
+  saveDraftBtn.addEventListener('click', async () => {
+    try {
+      await savePost('draft');
+      closeModal();
+      tg.showPopup({ title: 'Сохранено', message: 'Пост добавлен в черновики', buttons: [{ type: 'ok' }] });
+      await loadPosts();
+    } catch (e) {
+      tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+    }
+  });
+
+  scheduleBtn.addEventListener('click', async () => {
+    // Первое нажатие — показываем поле даты с дефолтом +1 час
+    if (scheduleField.classList.contains('hidden')) {
+      const d = new Date(Date.now() + 3600000);
+      d.setMinutes(0);
+      const pad = n => String(n).padStart(2, '0');
+      scheduleInput.value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      scheduleField.classList.remove('hidden');
+      return;
+    }
+    // Второе нажатие — сохраняем как scheduled
+    if (!scheduleInput.value) {
+      tg.showPopup({ title: 'Внимание', message: 'Выбери дату публикации', buttons: [{ type: 'ok' }] });
+      return;
+    }
+    try {
+      await savePost('scheduled', new Date(scheduleInput.value).toISOString());
+      closeModal();
+      tg.showPopup({ title: 'Запланировано', message: 'Пост будет опубликован в указанное время', buttons: [{ type: 'ok' }] });
+      await loadPosts();
+    } catch (e) {
+      tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+    }
+  });
+
+  publishBtn.addEventListener('click', () => {
+    tg.showConfirm('Опубликовать этот пост в канал прямо сейчас?', async (confirmed) => {
+      if (!confirmed) return;
+      const orig = publishBtn.innerHTML;
+      publishBtn.disabled = true;
+      publishBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Публикуем...';
+      try {
+        const saved = await savePost('draft');
+        const pubRes = await fetch(`/api/posts/${saved.id}/publish`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const pubData = await pubRes.json().catch(() => ({}));
+        if (!pubRes.ok) throw new Error(pubData.error || 'Ошибка публикации');
+        closeModal();
+        tg.showPopup({ title: 'Опубликовано', message: 'Пост отправлен в канал Telegram!', buttons: [{ type: 'ok' }] });
+        await refreshAllData();
+      } catch (e) {
+        tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+      } finally {
+        publishBtn.disabled = false;
+        publishBtn.innerHTML = orig;
       }
     });
   });

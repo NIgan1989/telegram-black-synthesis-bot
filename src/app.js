@@ -337,6 +337,22 @@ app.post('/api/settings', checkAuth, async (req, res) => {
   }
 });
 
+// 7a. Генерация поста по произвольному промпту (на лету, без сохранения)
+app.post('/api/posts/generate', checkAuth, async (req, res) => {
+  const { prompt, withChannelStyle } = req.body || {};
+  if (!prompt || typeof prompt !== 'string' || prompt.trim().length < 5) {
+    return res.status(400).json({ error: 'Промпт обязателен и должен содержать минимум 5 символов' });
+  }
+  try {
+    const generated = await gemini.generatePostFromPrompt(prompt.trim(), {
+      withChannelStyle: withChannelStyle !== false
+    });
+    res.json({ success: true, ...generated });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7. Ручной вызов сборщика новостей (для тестирования)
 app.post('/api/cron-trigger', checkAuth, async (req, res) => {
   console.log('⚡ Ручной запуск агрегации новостей из админки...');

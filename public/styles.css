@@ -314,12 +314,25 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .tab-header-actions h2 {
   font-family: var(--font-heading);
   font-size: 1.25rem;
   font-weight: 800;
+}
+
+.header-buttons-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-actions-row {
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* ---------------------------------------------
