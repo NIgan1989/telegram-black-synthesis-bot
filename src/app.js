@@ -126,12 +126,29 @@ app.post('/api/auth', (req, res) => {
 // 2. Получение общей статистики
 app.get('/api/stats', checkAuth, async (req, res) => {
   try {
-    // Перед чтением — освежаем сегодняшний subscribers_count прямо из Telegram.
-    // Без этого карточка "Подписчики" застаивалась до следующего cron'а (раз в сутки на Hobby Vercel).
+    // Перед чтением — берём актуальное число подписчиков напрямую из Telegram
+    // и записываем его в сегодняшнюю строку stats. Без этого карточка
+    // "Подписчики" застаивалась до следующего cron'а (раз в сутки на Hobby Vercel).
+    let subscribersWarning = null;
     try {
-      await scheduler.updateDailyStats();
+      const botInstance = bot.getBotInstance();
+      if (botInstance && process.env.TELEGRAM_CHANNEL_ID) {
+        const realCount = await botInstance.getChatMemberCount(process.env.TELEGRAM_CHANNEL_ID);
+        if (typeof realCount === 'number') {
+          const today = new Date().toISOString().split('T')[0];
+          await db.run(
+            `INSERT INTO stats (date, subscribers_count) VALUES (?, ?)
+             ON CONFLICT(date) DO UPDATE SET subscribers_count = ?`,
+            [today, realCount, realCount]
+          );
+          console.log(`📊 /api/stats: подписчиков сейчас в канале = ${realCount}`);
+        }
+      } else if (!botInstance) {
+        subscribersWarning = 'Бот не инициализирован — счётчик подписчиков не обновлён';
+      }
     } catch (e) {
-      console.warn('⚠️ updateDailyStats failed (не критично):', e.message);
+      subscribersWarning = `Telegram API: ${e.message}`;
+      console.warn('⚠️ getChatMemberCount failed:', e.message);
     }
 
     // Последние 7 записей статистики подписчиков
@@ -180,7 +197,8 @@ app.get('/api/stats', checkAuth, async (req, res) => {
         totalComments: commentsCount ? commentsCount.count : 0,
         sentiments: sentimentCounts,
         activeEngagement: totalEngagement
-      }
+      },
+      warning: subscribersWarning || undefined
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

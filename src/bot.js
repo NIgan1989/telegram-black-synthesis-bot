@@ -911,7 +911,7 @@ async function pinAdAnnouncement() {
   const oldPin = await db.get("SELECT value FROM settings WHERE key = 'ad_pin_message_id'");
   if (oldPin && oldPin.value) {
     try {
-      await bot.unpinChatMessage(channelId, Number(oldPin.value));
+      await bot.unpinChatMessage(channelId, { message_id: Number(oldPin.value) });
       console.log(`📌 Старая рекламная плашка #${oldPin.value} откреплена`);
     } catch (e) {
       console.warn(`⚠️ Не удалось открепить старое сообщение #${oldPin.value}: ${e.message}`);
@@ -953,7 +953,7 @@ async function unpinAdAnnouncement() {
   if (!oldPin || !oldPin.value) return { unpinned: false, reason: 'Нет закреплённой плашки в БД' };
 
   try {
-    await bot.unpinChatMessage(channelId, Number(oldPin.value));
+    await bot.unpinChatMessage(channelId, { message_id: Number(oldPin.value) });
     await db.run("DELETE FROM settings WHERE key = 'ad_pin_message_id'");
     return { unpinned: true };
   } catch (e) {

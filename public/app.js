@@ -205,7 +205,11 @@ async function loadStats() {
     if (!res.ok) throw new Error('Ошибка сети');
     const data = await res.json();
     state.stats = data;
-    
+
+    if (data.warning) {
+      console.warn('Stats warning:', data.warning);
+    }
+
     // Обновляем метрики на главном экране
     document.getElementById('metric-posts').innerText = data.summary.totalPosts;
     document.getElementById('metric-comments').innerText = data.summary.totalComments;
