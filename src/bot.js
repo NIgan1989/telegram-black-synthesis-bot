@@ -468,6 +468,25 @@ async function handleGroupComment(msg) {
   }
 }
 
+// Извлекает лид (первый абзац без заголовка) из markdown-контента, ≤250 символов, без разметки.
+function buildLead(cleanContent) {
+  const paragraphs = (cleanContent || '').split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+  let lead = paragraphs[0] || '';
+  // Пропускаем первую строку если она целиком — заголовок в звёздочках (с возможным эмодзи)
+  if (paragraphs.length > 1 && /^\s*[^\s]*\s*\*[^*\n]+\*\s*$/.test(lead)) {
+    lead = paragraphs[1];
+  }
+  return lead.replace(/\*/g, '').replace(/_/g, '').slice(0, 250).trim();
+}
+
+// Текст сообщения в канале для постов, опубликованных через Telegraph.
+// Используется и при первой публикации, и при последующих правках,
+// чтобы формат сообщения оставался "карточка с превью + лид + ссылка".
+function buildTelegraphMessageText(title, cleanContent, telegraphUrl) {
+  const lead = buildLead(cleanContent);
+  return `*${title}*\n\n${lead}\n\n[Читать полностью →](${telegraphUrl})`;
+}
+
 // Публикация поста в канал
 async function publishPost(post) {
   if (isDemo) {
@@ -531,18 +550,6 @@ async function publishPost(post) {
     const mediaUrl = realMedia || fallbackImage;
     const hasMedia = !!mediaUrl;
 
-    // Извлекаем "лид" — первый параграф после заголовка (или сам заголовок если лида нет)
-    // для краткой preview-карточки в канале.
-    const buildLead = () => {
-      const paragraphs = cleanContent.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
-      // Пропускаем заголовок (первый параграф, если он короткий и в звёздочках)
-      let lead = paragraphs[0] || '';
-      if (paragraphs.length > 1 && /^\s*[^\s]*\s*\*[^*\n]+\*\s*$/.test(lead)) {
-        lead = paragraphs[1];
-      }
-      return lead.replace(/\*/g, '').replace(/_/g, '').slice(0, 250).trim();
-    };
-
     // ОСНОВНОЙ путь: Telegraph-статья + sendMessage с URL → Telegram строит карточку.
     // Тап на карточку → Instant View с полным текстом, лайки и комментарии на самом канал-посте.
     try {
@@ -553,8 +560,7 @@ async function publishPost(post) {
         db
       });
 
-      const lead = buildLead();
-      const messageText = `*${post.title}*\n\n${lead}\n\n[Читать полностью →](${article.url})`;
+      const messageText = buildTelegraphMessageText(post.title, cleanContent, article.url);
 
       const resultMessage = await bot.sendMessage(channelId, messageText, {
         parse_mode: 'Markdown',
@@ -649,17 +655,19 @@ async function editPublishedPost(post) {
     throw new Error('У поста нет telegram_message_id — нечего редактировать в канале');
   }
 
+  const cleanContent = gemini.sanitizeMarkdown(post.content || '');
+  const fallbackImg = process.env.WEBAPP_URL
+    ? `${process.env.WEBAPP_URL.replace(/\/$/, '')}/logo.png` : null;
+  const realImg = post.media_url && post.media_url.trim().startsWith('http')
+    ? post.media_url.trim() : null;
+
   // 1. Обновляем Telegraph-статью если она была создана (не фейлим всё если упало — это бонус).
   if (post.telegraph_path) {
     try {
-      const fallbackImg = process.env.WEBAPP_URL
-        ? `${process.env.WEBAPP_URL.replace(/\/$/, '')}/logo.png` : null;
-      const realImg = post.media_url && post.media_url.trim().startsWith('http')
-        ? post.media_url.trim() : null;
       await telegraph.editArticle({
         path: post.telegraph_path,
         title: post.title,
-        content: gemini.sanitizeMarkdown(post.content || ''),
+        content: cleanContent,
         imageUrl: realImg || fallbackImg,
         db
       });
@@ -669,19 +677,36 @@ async function editPublishedPost(post) {
     }
   }
 
-  const sanitized = gemini.sanitizeMarkdown(post.content || '');
-  const titleNorm = (post.title || '').toLowerCase().replace(/[*_\s]/g, '');
-  const firstLineNorm = (sanitized.split('\n')[0] || '').toLowerCase().replace(/[*_\s🏭📊⚙️💡🔬🛢️📈🌍🔥]/g, '');
-  const contentStartsWithTitle = firstLineNorm && titleNorm &&
-    (firstLineNorm === titleNorm || firstLineNorm.startsWith(titleNorm.slice(0, 24)));
-  const formatted = contentStartsWithTitle ? sanitized : `*${post.title}*\n\n${sanitized}`;
-  const newText = truncateToFit(formatted, 1024);
+  // Формируем НОВЫЙ текст сообщения с учётом формата исходной публикации:
+  //  • если есть telegraph_url → "карточка с превью" (title + лид + ссылка на статью);
+  //  • если нет → полный текст поста (фоллбэк-публикация была sendPhoto+caption или sendMessage).
+  let newText;
+  if (post.telegraph_url) {
+    newText = buildTelegraphMessageText(post.title, cleanContent, post.telegraph_url);
+  } else {
+    const titleNorm = (post.title || '').toLowerCase().replace(/[*_\s]/g, '');
+    const firstLineNorm = (cleanContent.split('\n')[0] || '').toLowerCase().replace(/[*_\s🏭📊⚙️💡🔬🛢️📈🌍🔥]/g, '');
+    const contentStartsWithTitle = firstLineNorm && titleNorm &&
+      (firstLineNorm === titleNorm || firstLineNorm.startsWith(titleNorm.slice(0, 24)));
+    const formatted = contentStartsWithTitle ? cleanContent : `*${post.title}*\n\n${cleanContent}`;
+    newText = truncateToFit(formatted, 1024);
+  }
 
   const baseOpts = {
     chat_id: channelId,
     message_id: post.telegram_message_id,
     parse_mode: 'Markdown'
   };
+  // Для Telegraph-карточек обязательно подтягиваем тот же link_preview, что был при публикации,
+  // иначе editMessageText может выйти без превью.
+  if (post.telegraph_url) {
+    baseOpts.link_preview_options = {
+      is_disabled: false,
+      prefer_large_media: true,
+      show_above_text: true,
+      url: post.telegraph_url
+    };
+  }
 
   // Сценарий 1: пост был отправлен как sendMessage (Telegraph-карточка) → editMessageText.
   try {
@@ -689,33 +714,34 @@ async function editPublishedPost(post) {
     console.log(`✏️ Пост #${post.id}: editMessageText OK`);
     return;
   } catch (e) {
-    if (!/no text in the message|message can't be edited|MESSAGE_NOT_MODIFIED/i.test(e.message)) {
-      // Возможно, проблема с Markdown — попробуем без него
-      if (/can't parse entities/i.test(e.message)) {
-        try {
-          await bot.editMessageText(newText, { ...baseOpts, parse_mode: undefined });
-          console.log(`✏️ Пост #${post.id}: editMessageText (plain) OK`);
-          return;
-        } catch (_) { /* fallthrough */ }
-      }
-      // Если ошибка не "нет текста" — пробуем как caption
-    }
-  }
-
-  // Сценарий 2: пост был отправлен как sendPhoto (caption-фоллбэк) → editMessageCaption.
-  try {
-    await bot.editMessageCaption(newText, baseOpts);
-    console.log(`✏️ Пост #${post.id}: editMessageCaption OK`);
-  } catch (e) {
     if (/can't parse entities/i.test(e.message)) {
-      await bot.editMessageCaption(newText, { ...baseOpts, parse_mode: undefined });
-      console.log(`✏️ Пост #${post.id}: editMessageCaption (plain) OK`);
-      return;
+      try {
+        await bot.editMessageText(newText, { ...baseOpts, parse_mode: undefined });
+        console.log(`✏️ Пост #${post.id}: editMessageText (plain) OK`);
+        return;
+      } catch (_) { /* fallthrough в caption */ }
     }
     if (/MESSAGE_NOT_MODIFIED/i.test(e.message)) {
       console.log(`ℹ️ Пост #${post.id}: содержимое не изменилось`);
       return;
     }
+    // Сюда попадаем если это был photo+caption — нет текста для editMessageText
+  }
+
+  // Сценарий 2: пост был отправлен как sendPhoto (caption-фоллбэк) → editMessageCaption.
+  // Caption-варианту link_preview_options не нужен.
+  const capOpts = { ...baseOpts };
+  delete capOpts.link_preview_options;
+  try {
+    await bot.editMessageCaption(newText, capOpts);
+    console.log(`✏️ Пост #${post.id}: editMessageCaption OK`);
+  } catch (e) {
+    if (/can't parse entities/i.test(e.message)) {
+      await bot.editMessageCaption(newText, { ...capOpts, parse_mode: undefined });
+      console.log(`✏️ Пост #${post.id}: editMessageCaption (plain) OK`);
+      return;
+    }
+    if (/MESSAGE_NOT_MODIFIED/i.test(e.message)) return;
     throw new Error(`Не удалось отредактировать пост в канале: ${e.message}`);
   }
 }
