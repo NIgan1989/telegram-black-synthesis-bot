@@ -877,11 +877,88 @@ async function generateMockCommentsForPost(internalPostId, tgMsgId) {
   }
 }
 
+// Публикует в канал компактную рекламную плашку и закрепляет её.
+// Старая закреплённая (если её id сохранён в settings.ad_pin_message_id) — открепляется.
+async function pinAdAnnouncement() {
+  if (isDemo) {
+    console.log('📌 Demo: симуляция закрепления рекламной плашки');
+    return { message_id: Math.floor(Math.random() * 100000), demo: true };
+  }
+  if (!bot) initBot();
+  if (!bot) throw new Error('Бот не инициализирован — проверь TELEGRAM_BOT_TOKEN');
+
+  const adminContact = getAdminContactUrl();
+  const text = `📢 *Реклама в канале*
+
+Размещение для производителей оборудования, реагентов, IT-решений, образовательных программ, вакансий и сервиса в нефтехимической отрасли Казахстана и СНГ.
+
+Заявку оставь через кнопку ниже или напиши админу.`;
+
+  const buttons = [];
+  if (webAppUrl) buttons.push([{ text: '📝 Оставить заявку', web_app: { url: `${webAppUrl}/order.html` } }]);
+  if (adminContact) buttons.push([{ text: '💬 Связаться с админом', url: adminContact }]);
+
+  // Открепляем старую плашку если есть
+  const oldPin = await db.get("SELECT value FROM settings WHERE key = 'ad_pin_message_id'");
+  if (oldPin && oldPin.value) {
+    try {
+      await bot.unpinChatMessage(channelId, Number(oldPin.value));
+      console.log(`📌 Старая рекламная плашка #${oldPin.value} откреплена`);
+    } catch (e) {
+      console.warn(`⚠️ Не удалось открепить старое сообщение #${oldPin.value}: ${e.message}`);
+    }
+  }
+
+  const sent = await bot.sendMessage(channelId, text, {
+    parse_mode: 'Markdown',
+    disable_notification: true,
+    reply_markup: buttons.length ? { inline_keyboard: buttons } : undefined
+  });
+
+  try {
+    await bot.pinChatMessage(channelId, sent.message_id, { disable_notification: true });
+    console.log(`📌 Рекламная плашка #${sent.message_id} закреплена в канале`);
+  } catch (e) {
+    throw new Error(`Опубликовано, но не удалось закрепить: ${e.message}. Дай боту право "Закреплять сообщения" в админке канала.`);
+  }
+
+  await db.run(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = ?`,
+    ['ad_pin_message_id', String(sent.message_id), String(sent.message_id)]
+  );
+
+  return { message_id: sent.message_id, demo: false };
+}
+
+// Открепить рекламную плашку (если есть).
+async function unpinAdAnnouncement() {
+  if (isDemo) {
+    console.log('📌 Demo: симуляция открепления плашки');
+    return { unpinned: true, demo: true };
+  }
+  if (!bot) initBot();
+  if (!bot) throw new Error('Бот не инициализирован');
+
+  const oldPin = await db.get("SELECT value FROM settings WHERE key = 'ad_pin_message_id'");
+  if (!oldPin || !oldPin.value) return { unpinned: false, reason: 'Нет закреплённой плашки в БД' };
+
+  try {
+    await bot.unpinChatMessage(channelId, Number(oldPin.value));
+    await db.run("DELETE FROM settings WHERE key = 'ad_pin_message_id'");
+    return { unpinned: true };
+  } catch (e) {
+    throw new Error(`Не удалось открепить: ${e.message}`);
+  }
+}
+
 module.exports = {
   initBot,
   publishPost,
   editPublishedPost,
   deletePublishedPost,
+  pinAdAnnouncement,
+  unpinAdAnnouncement,
   getSubscriberCount,
   getBotInstance: () => bot
 };

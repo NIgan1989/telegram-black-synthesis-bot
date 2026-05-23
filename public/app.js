@@ -716,6 +716,53 @@ function initEventHandlers() {
     }
   });
 
+  // 3b. Кнопки управления рекламной плашкой в канале
+  const pinAdBtn = document.getElementById('btn-pin-ad');
+  if (pinAdBtn) {
+    pinAdBtn.addEventListener('click', () => {
+      tg.showConfirm('Опубликовать и закрепить рекламную плашку в канале? Старая плашка (если есть) открепится.', async (ok) => {
+        if (!ok) return;
+        const orig = pinAdBtn.innerHTML;
+        pinAdBtn.disabled = true;
+        pinAdBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Публикую…';
+        try {
+          const res = await fetch('/api/channel/pin-ad', { method: 'POST', headers: getHeaders() });
+          const data = await res.json();
+          if (!res.ok) throw new Error((data.error || 'Ошибка') + (data.hint ? ' — ' + data.hint : ''));
+          safePopup('Готово', data.demo ? 'Demo: плашка закреплена (имитация).' : `Закреплено в канале (сообщение #${data.message_id}).`);
+        } catch (e) {
+          safePopup('Ошибка', e.message);
+        } finally {
+          pinAdBtn.disabled = false;
+          pinAdBtn.innerHTML = orig;
+        }
+      });
+    });
+  }
+
+  const unpinAdBtn = document.getElementById('btn-unpin-ad');
+  if (unpinAdBtn) {
+    unpinAdBtn.addEventListener('click', () => {
+      tg.showConfirm('Открепить рекламную плашку?', async (ok) => {
+        if (!ok) return;
+        const orig = unpinAdBtn.innerHTML;
+        unpinAdBtn.disabled = true;
+        unpinAdBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>…';
+        try {
+          const res = await fetch('/api/channel/unpin-ad', { method: 'POST', headers: getHeaders() });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Ошибка');
+          safePopup('Готово', data.unpinned ? 'Плашка откреплена.' : (data.reason || 'Нечего откреплять.'));
+        } catch (e) {
+          safePopup('Ошибка', e.message);
+        } finally {
+          unpinAdBtn.disabled = false;
+          unpinAdBtn.innerHTML = orig;
+        }
+      });
+    });
+  }
+
   // 4. Модальное окно Рекламы (Заказов)
   const openOrderBtn = document.getElementById('btn-open-order-modal');
   const closeOrderBtn = document.getElementById('btn-close-order-modal');

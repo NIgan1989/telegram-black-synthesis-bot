@@ -561,6 +561,30 @@ app.post('/api/posts/generate', checkAuth, async (req, res) => {
   }
 });
 
+// 8. Реклама в канале: закрепить компактную плашку с кнопкой "Заказать рекламу".
+app.post('/api/channel/pin-ad', checkAuth, async (req, res) => {
+  try {
+    const result = await bot.pinAdAnnouncement();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('❌ pin-ad failed:', err.message);
+    res.status(500).json({
+      error: err.message,
+      hint: 'Бот должен быть админом канала с правом "Закреплять сообщения". Проверь Settings → Administrators в Telegram.'
+    });
+  }
+});
+
+// 8b. Открепить рекламную плашку.
+app.post('/api/channel/unpin-ad', checkAuth, async (req, res) => {
+  try {
+    const result = await bot.unpinAdAnnouncement();
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7. Ручной вызов сборщика новостей (для тестирования)
 app.post('/api/cron-trigger', checkAuth, async (req, res) => {
   console.log('⚡ Ручной запуск агрегации новостей из админки...');
