@@ -27,15 +27,26 @@ function getAdminContactUrl() {
   return '';
 }
 
-// Главное меню — постоянная reply-клавиатура внизу чата
+// Главное меню — постоянная reply-клавиатура внизу чата.
+// Где возможно, ставим web_app-кнопки чтобы открывать Mini App в один тап,
+// иначе падаем на текстовые кнопки, которые транслируются в команды.
 function getMainKeyboard(isAdmin) {
+  const orderBtn = webAppUrl
+    ? { text: '💼 Заказать рекламу', web_app: { url: `${webAppUrl}/order.html` } }
+    : { text: '💼 Заказать рекламу' };
+
   const keyboard = [
-    [{ text: '📢 О канале' }, { text: '💼 Заказать рекламу' }],
+    [{ text: '📢 О канале' }, orderBtn],
     [{ text: '❓ Помощь' }]
   ];
+
   if (isAdmin) {
-    keyboard.splice(1, 0, [{ text: '📊 Статистика' }, { text: '🛠 Админка' }]);
+    const adminBtn = webAppUrl
+      ? { text: '🛠 Админка', web_app: { url: webAppUrl } }
+      : { text: '🛠 Админка' };
+    keyboard.splice(1, 0, [{ text: '📊 Статистика' }, adminBtn]);
   }
+
   return {
     keyboard,
     resize_keyboard: true,
@@ -43,7 +54,8 @@ function getMainKeyboard(isAdmin) {
   };
 }
 
-// Маппинг текста кнопок reply-клавиатуры на команды
+// Маппинг текста кнопок reply-клавиатуры на команды — на случай fallback'а
+// (когда WEBAPP_URL не задан и web_app-кнопок нет, тап шлёт текст).
 const BUTTON_TO_COMMAND = {
   '📢 О канале': '/about',
   '💼 Заказать рекламу': '/order',
