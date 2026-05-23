@@ -105,6 +105,8 @@ body {
 .text-sm { font-size: 0.875rem; }
 .font-bold { font-weight: 700; }
 .green-text { color: var(--green) !important; }
+.orange-text { color: var(--orange) !important; }
+.red-text { color: var(--red) !important; }
 
 /* Кнопки с микро-анимацией */
 .btn {

@@ -153,20 +153,29 @@
         </div>
       </section>
 
-      <!-- Секция 3: Рекламные заказы -->
+      <!-- Секция 3: Рекламные заказы — поступают через публичную форму /order.html -->
       <section id="tab-orders" class="tab-content">
         <div class="tab-header-actions">
-          <h2>Реклама и Монетизация</h2>
-          <button class="btn btn-success" id="btn-open-order-modal">
-            <i class="fa-solid fa-plus"></i> Новый заказ
+          <h2>Заявки на рекламу</h2>
+          <button class="btn btn-secondary" id="btn-open-order-modal" title="Внести заказ вручную (если договорился вне формы)">
+            <i class="fa-solid fa-plus"></i> Внести вручную
           </button>
         </div>
+
+        <p class="section-description mt-1">
+          Заявки приходят через публичную форму на канале и команду /order бота. Одобряй те, что pending — пост перейдёт в «Запланирован».
+        </p>
 
         <!-- Карточки статистики доходов -->
         <div class="ad-stats-card glass mt-2">
           <div class="ad-stat-item">
             <span class="label">Заработано всего</span>
             <span class="value green-text" id="ad-total-revenue">0 ₸</span>
+          </div>
+          <div class="ad-stat-divider"></div>
+          <div class="ad-stat-item">
+            <span class="label">Ждут одобрения</span>
+            <span class="value orange-text" id="ad-pending-orders">0</span>
           </div>
           <div class="ad-stat-divider"></div>
           <div class="ad-stat-item">
@@ -178,6 +187,14 @@
             <span class="label">Всего сделок</span>
             <span class="value" id="ad-total-orders">0</span>
           </div>
+        </div>
+
+        <!-- Фильтр статусов -->
+        <div class="filter-bar glass mt-2">
+          <button class="filter-btn order-filter-btn active" data-order-status="pending">Ожидают</button>
+          <button class="filter-btn order-filter-btn" data-order-status="paid">В работе</button>
+          <button class="filter-btn order-filter-btn" data-order-status="completed">Завершённые</button>
+          <button class="filter-btn order-filter-btn" data-order-status="all">Все</button>
         </div>
 
         <!-- Таблица заказов -->
@@ -195,7 +212,7 @@
             </thead>
             <tbody id="orders-list-body">
               <tr>
-                <td colspan="6" class="text-center py-2">Заказы отсутствуют</td>
+                <td colspan="6" class="text-center py-2">Заявок пока нет</td>
               </tr>
             </tbody>
           </table>
@@ -290,23 +307,29 @@
 
   </div>
 
-  <!-- Модальное окно создания рекламного заказа -->
+  <!-- Модалка "Внести заказ вручную" — для офлайн-сделок,
+       когда рекламодатель договорился с тобой напрямую, без публичной формы -->
   <div id="order-modal" class="modal-overlay hidden">
     <div class="modal-content glass">
       <div class="modal-header">
-        <h2>Новый рекламный заказ</h2>
+        <h2>Внести заказ вручную</h2>
         <button class="modal-close" id="btn-close-order-modal">&times;</button>
       </div>
       <form id="order-form" class="modal-body">
-        
-        <div class="input-field">
-          <label for="order-advertiser">Имя рекламодателя</label>
+
+        <p class="section-description">
+          Используй когда договорился с клиентом вне формы (звонок, личка). Заказ сразу создастся как «оплаченный», пост — как «запланированный».
+        </p>
+
+        <div class="input-field mt-2">
+          <label for="order-advertiser">Кто рекламодатель</label>
           <input type="text" id="order-advertiser" placeholder="Например: ТОО КазФосфат" required>
         </div>
 
         <div class="input-field mt-2">
-          <label for="order-amount">Сумма оплаты (₸)</label>
+          <label for="order-amount">Сумма, которую он заплатил (₸)</label>
           <input type="number" id="order-amount" placeholder="50000" min="0" required>
+          <span class="input-help">Сколько ОН платит тебе за публикацию</span>
         </div>
 
         <div class="input-field mt-2">
@@ -318,8 +341,8 @@
         <h3 class="mt-2 text-sm font-bold">Контент рекламного поста</h3>
 
         <div class="input-field mt-1">
-          <label for="order-post-title">Заголовок рекламного поста</label>
-          <input type="text" id="order-post-title" placeholder="Спецпроект: Минеральные удобрения..." required>
+          <label for="order-post-title">Заголовок</label>
+          <input type="text" id="order-post-title" placeholder="Спецпроект: ..." required>
         </div>
 
         <div class="input-field mt-2">
@@ -328,13 +351,14 @@
         </div>
 
         <div class="input-field mt-2">
-          <label for="order-post-media">Ссылка на изображение (картинку)</label>
-          <input type="url" id="order-post-media" placeholder="https://images.unsplash.com/photo-...">
+          <label for="order-post-media">Ссылка на изображение (опционально)</label>
+          <input type="url" id="order-post-media" placeholder="https://...">
+          <span class="input-help">Если пусто, при публикации возьмётся логотип канала</span>
         </div>
 
         <div class="modal-footer mt-2">
           <button type="button" class="btn btn-secondary" id="btn-cancel-order">Отмена</button>
-          <button type="submit" class="btn btn-success">Запланировать и оплатить</button>
+          <button type="submit" class="btn btn-success">Сохранить и запланировать</button>
         </div>
 
       </form>

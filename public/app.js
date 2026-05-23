@@ -25,12 +25,18 @@ function safePopup(title, message, btnType = 'ok') {
 let state = {
   currentTab: 'overview',
   postFilter: 'draft',
+  orderFilter: 'pending',
   stats: null,
   posts: [],
   orders: [],
   comments: [],
   settings: {}
 };
+
+function filterOrders(orders) {
+  if (state.orderFilter === 'all') return orders;
+  return orders.filter(o => o.status === state.orderFilter);
+}
 
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', async () => {
@@ -247,21 +253,32 @@ async function loadOrders() {
     const res = await fetch('/api/orders', { headers: getHeaders() });
     if (!res.ok) throw new Error('Ошибка сети');
     const orders = await res.json();
+
+    // Сортировка: сначала pending (ждут одобрения), потом paid, потом completed
+    const statusOrder = { pending: 0, paid: 1, completed: 2, cancelled: 3 };
+    orders.sort((a, b) => {
+      const sa = statusOrder[a.status] ?? 99;
+      const sb = statusOrder[b.status] ?? 99;
+      if (sa !== sb) return sa - sb;
+      return new Date(b.publish_date) - new Date(a.publish_date);
+    });
     state.orders = orders;
-    
-    // Считаем выручку
+
     const totalRev = orders
       .filter(o => o.status === 'completed' || o.status === 'paid')
       .reduce((sum, o) => sum + parseFloat(o.amount_paid || 0), 0);
-    
+
+    const pendingCount = orders.filter(o => o.status === 'pending').length;
     const activeOrd = orders.filter(o => o.status === 'paid').length;
-    
+
     document.getElementById('metric-revenue').innerText = `${totalRev.toLocaleString()} ₸`;
     document.getElementById('ad-total-revenue').innerText = `${totalRev.toLocaleString()} ₸`;
     document.getElementById('ad-active-orders').innerText = activeOrd;
     document.getElementById('ad-total-orders').innerText = orders.length;
+    const pendingEl = document.getElementById('ad-pending-orders');
+    if (pendingEl) pendingEl.innerText = pendingCount;
 
-    renderOrdersTable(orders);
+    renderOrdersTable(filterOrders(orders));
   } catch (err) {
     console.error('Ошибка загрузки заказов:', err);
   }
@@ -592,14 +609,25 @@ function renderSentimentChart(sentiments) {
 // ---------------------------------------------
 function initEventHandlers() {
   
-  // 1. Кнопки фильтрации постов
-  const filterBtns = document.querySelectorAll('.filter-btn');
-  filterBtns.forEach(btn => {
+  // 1a. Кнопки фильтрации постов (вкладка Посты)
+  const postFilterBtns = document.querySelectorAll('.filter-btn[data-status]');
+  postFilterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      filterBtns.forEach(b => b.classList.remove('active'));
+      postFilterBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.postFilter = btn.getAttribute('data-status');
       loadPosts();
+    });
+  });
+
+  // 1b. Кнопки фильтрации заявок на рекламу (вкладка Реклама)
+  const orderFilterBtns = document.querySelectorAll('.order-filter-btn');
+  orderFilterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      orderFilterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.orderFilter = btn.getAttribute('data-order-status');
+      renderOrdersTable(filterOrders(state.orders));
     });
   });
 
