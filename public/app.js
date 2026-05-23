@@ -863,9 +863,12 @@ function initAiPromptModal() {
 
       titleInput.value = data.title || '';
       contentInput.value = data.content || '';
+      mediaInput.value = data.media_url || '';
       showStage('result');
       if (data.warning) {
-        safePopup('⚠️ Mock-контент', data.warning + '\n\nЭто заглушка, не настоящая Gemini-генерация. Проверь env vars в Vercel.');
+        safePopup('⚠️ Mock-контент', data.warning);
+      } else if (!data.media_url) {
+        safePopup('ℹ️ Картинка не найдена', 'Wikipedia не нашла иллюстрацию по теме. При публикации будет использован логотип канала.');
       }
     } catch (e) {
       safePopup('Ошибка', e.message);

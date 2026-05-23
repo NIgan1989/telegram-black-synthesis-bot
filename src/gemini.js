@@ -29,10 +29,11 @@ async function generateArticle(rawNews) {
         responseSchema: {
           type: 'OBJECT',
           properties: {
-            title: { type: 'STRING', description: 'Краткий и цепляющий заголовок для поста в Telegram на русском языке.' },
-            content: { type: 'STRING', description: 'Подробный, профессиональный, отформатированный пост для Telegram на русском языке с использованием markdown (жирный текст, списки, хэштеги).' }
+            title: { type: 'STRING', description: 'Краткий цепляющий заголовок поста на русском.' },
+            content: { type: 'STRING', description: 'Полный текст поста в Markdown, со структурой: заголовок-лид-факты-технология-вывод-хэштеги.' },
+            imageKeywords: { type: 'STRING', description: '2-4 ключевых слова на английском или русском для поиска иллюстрации в Wikipedia (название компании, объекта, технологии, города). Через пробел, без кавычек.' }
           },
-          required: ['title', 'content']
+          required: ['title', 'content', 'imageKeywords']
         }
       }
     });
@@ -70,7 +71,8 @@ async function generateArticle(rawNews) {
 5. Хэштеги — 3-5, без запятых, через пробел, в конце.
 6. Эмодзи в начале блоков (по одной), не разбрасывай по тексту.
 7. Заголовок в первой строке должен быть жирным (*...*) и не повторять слова "анализ" или название агентства.
-8. Не пиши никаких пояснений до или после JSON.`;
+8. В поле imageKeywords положи 2-4 поисковых слова для иллюстрации (например "Атырауский НПЗ" или "polyethylene plant Kazakhstan" — то, по чему точно есть статья в Wikipedia).
+9. Не пиши никаких пояснений до или после JSON.`;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
@@ -156,7 +158,7 @@ ${rawNews.description || 'Развитие химического кластер
 
 #нефтехимия #полимеры #удобрения #Казахстан #ЧёрныйСинтез`;
 
-  return { title, content };
+  return { title, content, imageKeywords: 'нефтехимия Казахстан завод' };
 }
 
 function mockAnalyzeSentiment(commentText) {
@@ -195,9 +197,10 @@ async function generatePostFromPrompt(userPrompt, options = {}) {
           type: 'OBJECT',
           properties: {
             title: { type: 'STRING', description: 'Краткий цепляющий заголовок поста на русском' },
-            content: { type: 'STRING', description: 'Основной текст поста с Markdown-разметкой и хэштегами' }
+            content: { type: 'STRING', description: 'Основной текст поста с Markdown-разметкой и хэштегами' },
+            imageKeywords: { type: 'STRING', description: '2-4 ключевых слова для поиска иллюстрации в Wikipedia (название объекта, компании, технологии). Через пробел, без кавычек.' }
           },
-          required: ['title', 'content']
+          required: ['title', 'content', 'imageKeywords']
         }
       }
     });
@@ -237,7 +240,8 @@ ${userPrompt}
 3. Длина: 600-900 символов (чтобы помещался в caption фото).
 4. 3-5 хэштегов в конце через пробел.
 5. По одной эмодзи в начале блоков.
-6. Не пиши пояснений до или после JSON.`;
+6. В поле imageKeywords положи 2-4 поисковых слова (компания, объект, технология) для подбора картинки.
+7. Не пиши пояснений до или после JSON.`;
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
@@ -268,7 +272,15 @@ _(Демо-режим: реальная Gemini-генерация недосту
 
 #ЧёрныйСинтез #демо ${withChannelStyle ? '#нефтехимия #СНГ' : '#свободныйСтиль'}`;
 
-  return { title: shortPrompt, content };
+  // Простой эвристический парсинг ключевых слов из промпта на случай мока.
+  const imageKeywords = userPrompt
+    .replace(/[^\w\sА-Яа-яёЁ]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 4)
+    .slice(0, 3)
+    .join(' ') || 'нефтехимия';
+
+  return { title: shortPrompt, content, imageKeywords };
 }
 
 module.exports = {

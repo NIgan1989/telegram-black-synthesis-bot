@@ -3,6 +3,7 @@ const db = require('./db');
 const news = require('./news');
 const gemini = require('./gemini');
 const bot = require('./bot');
+const images = require('./images');
 
 // Запуск планировщика (для локального режима)
 function startScheduler() {
@@ -81,13 +82,15 @@ async function runNewsAggregation() {
         INSERT INTO posts (title, content, media_url, status, scheduled_at, type)
         VALUES (?, ?, ?, ?, ?, 'organic')
       `;
-      // Для демо-режима или разнообразия подставим случайное красивое фото завода
-      const mockPhotos = [
-        'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80', // refinery image
-        'https://images.unsplash.com/photo-1542060748-10c28b629f6f?auto=format&fit=crop&w=1200&q=80',
-        'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80'
-      ];
-      const mediaUrl = mockPhotos[Math.floor(Math.random() * mockPhotos.length)];
+      // Ищем релевантную картинку в Wikipedia по ключевикам от Gemini (или по заголовку).
+      let mediaUrl = null;
+      try {
+        const searchQuery = generated.imageKeywords || article.title;
+        mediaUrl = await images.findImageForTopic(searchQuery);
+      } catch (e) {
+        console.warn('Поиск картинки не удался:', e.message);
+      }
+      // publishPost при null упадёт на брендированный logo.png через WEBAPP_URL.
 
       const sourceDomain = (() => {
         try { return new URL(article.link).hostname.replace(/^www\./, ''); }

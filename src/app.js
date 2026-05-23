@@ -5,6 +5,7 @@ const bot = require('./bot');
 const gemini = require('./gemini');
 const news = require('./news');
 const scheduler = require('./scheduler');
+const images = require('./images');
 const crypto = require('crypto');
 
 const app = express();
@@ -466,7 +467,23 @@ app.post('/api/posts/generate', checkAuth, async (req, res) => {
     const generated = await gemini.generatePostFromPrompt(prompt.trim(), {
       withChannelStyle: withChannelStyle !== false
     });
-    const response = { success: true, title: generated.title, content: generated.content };
+
+    // Параллельно с подготовкой ответа ищем картинку через Wikipedia.
+    const searchQuery = generated.imageKeywords || generated.title || prompt;
+    let mediaUrl = null;
+    try {
+      mediaUrl = await images.findImageForTopic(searchQuery);
+    } catch (e) {
+      console.warn('Image search failed:', e.message);
+    }
+
+    const response = {
+      success: true,
+      title: generated.title,
+      content: generated.content,
+      media_url: mediaUrl,
+      image_keywords: generated.imageKeywords || null
+    };
     if (generated._mock) {
       response.warning = (() => {
         switch (generated._reason) {
