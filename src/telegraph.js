@@ -152,18 +152,13 @@ function markdownToNodes(text) {
   return nodes;
 }
 
-// Главная функция: создаёт Telegraph-страницу, возвращает URL.
-async function createArticle({ title, content, imageUrl, db }) {
-  const token = await getAccessToken(db);
-  const cleanTitle = (title || 'Чёрный Синтез').replace(/[*_`]/g, '').slice(0, 256);
-
+// Собирает body статьи: фото, основной markdown, подпись.
+function buildContentNodes({ title, content, imageUrl }) {
   const nodes = [];
   if (imageUrl && /^https?:\/\//.test(imageUrl)) {
     nodes.push({ tag: 'figure', children: [{ tag: 'img', attrs: { src: imageUrl } }] });
   }
   nodes.push(...markdownToNodes(content || ''));
-
-  // Подпись в конце статьи — ссылка на канал
   nodes.push({
     tag: 'p',
     children: [
@@ -171,17 +166,42 @@ async function createArticle({ title, content, imageUrl, db }) {
       { tag: 'a', attrs: { href: 'https://t.me/black_synthesis' }, children: ['@black_synthesis'] }
     ]
   });
+  return nodes;
+}
 
+function cleanupTitle(title) {
+  return (title || 'Чёрный Синтез').replace(/[*_`]/g, '').slice(0, 256);
+}
+
+// Создаёт Telegraph-страницу, возвращает { url, path, ... }.
+async function createArticle({ title, content, imageUrl, db }) {
+  const token = await getAccessToken(db);
   const result = await callApi('createPage', {
     access_token: token,
-    title: cleanTitle,
+    title: cleanupTitle(title),
     author_name: 'Чёрный Синтез',
     author_url: 'https://t.me/black_synthesis',
-    content: nodes,
+    content: buildContentNodes({ title, content, imageUrl }),
     return_content: false
   });
-
   return result;
 }
 
-module.exports = { createArticle, markdownToNodes };
+// Обновляет существующую Telegraph-страницу по её path (например "Test-05-23").
+// Telegram Instant View при тапе на ту же ссылку покажет обновлённое содержимое.
+async function editArticle({ path, title, content, imageUrl, db }) {
+  if (!path) throw new Error('Telegraph editArticle: path обязателен');
+  const token = await getAccessToken(db);
+  const result = await callApi('editPage', {
+    access_token: token,
+    path,
+    title: cleanupTitle(title),
+    author_name: 'Чёрный Синтез',
+    author_url: 'https://t.me/black_synthesis',
+    content: buildContentNodes({ title, content, imageUrl }),
+    return_content: false
+  });
+  return result;
+}
+
+module.exports = { createArticle, editArticle, markdownToNodes };

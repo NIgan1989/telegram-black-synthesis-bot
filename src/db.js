@@ -122,7 +122,9 @@ async function init() {
       published_at TIMESTAMP,
       type VARCHAR(20) DEFAULT 'organic',
       views INTEGER DEFAULT 0,
-      telegram_message_id BIGINT
+      telegram_message_id BIGINT,
+      telegraph_url TEXT,
+      telegraph_path TEXT
     );
   ` : `
     CREATE TABLE IF NOT EXISTS posts (
@@ -135,7 +137,9 @@ async function init() {
       published_at TEXT,
       type TEXT DEFAULT 'organic',
       views INTEGER DEFAULT 0,
-      telegram_message_id INTEGER
+      telegram_message_id INTEGER,
+      telegraph_url TEXT,
+      telegraph_path TEXT
     );
   `;
 
@@ -215,6 +219,7 @@ async function init() {
     await run(statsSchema);
     await run(settingsSchema);
     await migrateAddTelegramMessageId();
+    await migrateAddTelegraphColumns();
     console.log('✅ DB: Все таблицы успешно инициализированы.');
 
     if (process.env.DEMO_MODE === 'true') {
@@ -237,6 +242,20 @@ async function migrateAddTelegramMessageId() {
     await run('ALTER TABLE posts ADD COLUMN telegram_message_id INTEGER');
   } catch (err) {
     if (!/duplicate column/i.test(err.message)) throw err;
+  }
+}
+
+// Добавляет колонки telegraph_url + telegraph_path в posts — нужно чтобы при редактировании
+// поста уметь дёрнуть Telegraph editPage по path и обновить статью.
+async function migrateAddTelegraphColumns() {
+  const cols = isProd
+    ? ['ALTER TABLE posts ADD COLUMN IF NOT EXISTS telegraph_url TEXT',
+       'ALTER TABLE posts ADD COLUMN IF NOT EXISTS telegraph_path TEXT']
+    : ['ALTER TABLE posts ADD COLUMN telegraph_url TEXT',
+       'ALTER TABLE posts ADD COLUMN telegraph_path TEXT'];
+  for (const sql of cols) {
+    try { await run(sql); }
+    catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
   }
 }
 

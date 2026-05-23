@@ -567,8 +567,8 @@ async function publishPost(post) {
 
       const now = new Date().toISOString();
       await db.run(
-        'UPDATE posts SET status = ?, published_at = ?, telegram_message_id = ? WHERE id = ?',
-        ['published', now, tgMessageId, post.id]
+        'UPDATE posts SET status = ?, published_at = ?, telegram_message_id = ?, telegraph_url = ?, telegraph_path = ? WHERE id = ?',
+        ['published', now, tgMessageId, article.url, article.path, post.id]
       );
 
       return tgMessageId;
@@ -637,6 +637,7 @@ async function publishPost(post) {
 // Редактирование уже опубликованного в канал поста.
 // Не знаем заранее, был ли пост sendMessage (Telegraph-карточка) или sendPhoto (caption-фоллбэк),
 // поэтому пробуем editMessageText, при ошибке про "no text" фоллбэчимся на editMessageCaption.
+// Если у поста есть telegraph_path — параллельно обновляем саму Telegraph-статью.
 async function editPublishedPost(post) {
   if (isDemo) {
     console.log(`✏️ Demo: симуляция редактирования поста #${post.id} в канале`);
@@ -646,6 +647,26 @@ async function editPublishedPost(post) {
   if (!bot) throw new Error('Бот не инициализирован');
   if (!post.telegram_message_id) {
     throw new Error('У поста нет telegram_message_id — нечего редактировать в канале');
+  }
+
+  // 1. Обновляем Telegraph-статью если она была создана (не фейлим всё если упало — это бонус).
+  if (post.telegraph_path) {
+    try {
+      const fallbackImg = process.env.WEBAPP_URL
+        ? `${process.env.WEBAPP_URL.replace(/\/$/, '')}/logo.png` : null;
+      const realImg = post.media_url && post.media_url.trim().startsWith('http')
+        ? post.media_url.trim() : null;
+      await telegraph.editArticle({
+        path: post.telegraph_path,
+        title: post.title,
+        content: gemini.sanitizeMarkdown(post.content || ''),
+        imageUrl: realImg || fallbackImg,
+        db
+      });
+      console.log(`📝 Telegraph статья ${post.telegraph_path} обновлена`);
+    } catch (e) {
+      console.warn(`⚠️ Telegraph editArticle не сработал: ${e.message} (продолжаем — обновим сообщение в канале)`);
+    }
   }
 
   const sanitized = gemini.sanitizeMarkdown(post.content || '');
