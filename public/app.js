@@ -289,9 +289,22 @@ async function loadComments() {
   try {
     const res = await fetch('/api/comments', { headers: getHeaders() });
     if (!res.ok) throw new Error('Ошибка сети');
-    const comments = await res.json();
+    const data = await res.json();
+    // Бэкенд возвращает {comments, removedCount} (новый формат) либо просто массив (на всякий случай).
+    const comments = Array.isArray(data) ? data : (data.comments || []);
+    const removedCount = data.removedCount || 0;
+
     state.comments = comments;
     renderCommentsFeed(comments);
+
+    if (removedCount > 0) {
+      safePopup(
+        '🔄 Синхронизация',
+        `Удалено ${removedCount} комментариев, которых уже нет в группе обсуждения (подписчики удалили сами).`
+      );
+      // Стата на главной могла измениться — обновим.
+      try { await loadStats(); } catch (_) {}
+    }
   } catch (err) {
     console.error('Ошибка загрузки комментариев:', err);
   }

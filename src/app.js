@@ -365,17 +365,85 @@ app.put('/api/orders/:id', checkAuth, async (req, res) => {
 // 5. Комментарии
 app.get('/api/comments', checkAuth, async (req, res) => {
   try {
-    const comments = await db.query(`
+    let comments = await db.query(`
       SELECT c.*, p.title as post_title
       FROM comments c
       LEFT JOIN posts p ON c.post_id = p.id
       ORDER BY c.id DESC LIMIT 50
     `);
-    res.json(comments);
+
+    // Auto-sync с Telegram: проверяем что каждый коммент ещё существует в группе обсуждения.
+    // Если подписчик удалил свой коммент — Telegram API не присылает событие, поэтому
+    // мы периодически "пингуем" forwardMessage'ом (с моментальным удалением форварда).
+    // Параметр ?sync=false позволяет отключить, если будет тормозить.
+    let removedCount = 0;
+    if (req.query.sync !== 'false' && process.env.TELEGRAM_BOT_TOKEN && process.env.ADMIN_TELEGRAM_ID) {
+      try {
+        const sync = await probeCommentsExistence(comments);
+        if (sync.removedIds.length > 0) {
+          const placeholders = sync.removedIds.map(() => '?').join(',');
+          await db.run(`DELETE FROM comments WHERE id IN (${placeholders})`, sync.removedIds);
+          removedCount = sync.removedIds.length;
+          comments = comments.filter(c => !sync.removedIds.includes(c.id));
+          console.log(`🔄 Sync: удалено ${removedCount} комментов, которых уже нет в группе обсуждения`);
+        }
+      } catch (e) {
+        console.warn('⚠️ Auto-sync комментов не удался (не критично):', e.message);
+      }
+    }
+
+    res.json({ comments, removedCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Проверяет существование комментариев в группе обсуждения через forwardMessage в личку админу
+// с моментальным удалением форварда. Возвращает {removedIds: [...]} — те, что больше не существуют.
+async function probeCommentsExistence(comments) {
+  const botInstance = bot.getBotInstance();
+  if (!botInstance) return { removedIds: [] };
+  const adminId = process.env.ADMIN_TELEGRAM_ID;
+  if (!adminId) return { removedIds: [] };
+
+  // Узнаём id группы обсуждения через getChat → linked_chat_id канала.
+  let groupChatId;
+  try {
+    const chat = await botInstance.getChat(process.env.TELEGRAM_CHANNEL_ID);
+    groupChatId = chat && chat.linked_chat_id;
+  } catch (e) {
+    console.warn('probeComments: не удалось получить linked_chat_id:', e.message);
+    return { removedIds: [] };
+  }
+  if (!groupChatId) return { removedIds: [] };
+
+  const CONCURRENCY = 5;
+  const removedIds = [];
+
+  for (let i = 0; i < comments.length; i += CONCURRENCY) {
+    const batch = comments.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(async (c) => {
+      if (!c.telegram_message_id) return; // нечего проверять
+      try {
+        const fwd = await botInstance.forwardMessage(adminId, groupChatId, c.telegram_message_id, {
+          disable_notification: true
+        });
+        if (fwd && fwd.message_id) {
+          // Сразу убираем форвард, чтобы не засорять админскую личку
+          botInstance.deleteMessage(adminId, fwd.message_id).catch(() => {});
+        }
+      } catch (e) {
+        // Telegram использует разные формулировки для "сообщения нет".
+        if (/message to forward not found|message_id_invalid|message id is invalid|message to copy not found|chat not found|MESSAGE_ID_INVALID/i.test(e.message)) {
+          removedIds.push(c.id);
+        }
+        // Другие ошибки (rate limit, network) игнорируем — не удаляем легитимные комменты.
+      }
+    }));
+  }
+
+  return { removedIds };
+}
 
 // Удаление комментария: убираем из БД и пытаемся удалить из группы обсуждения.
 // Telegram Bot API не присылает события об удалении подписчиком собственного коммента —
