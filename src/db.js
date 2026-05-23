@@ -79,10 +79,15 @@ function run(sql, params = []) {
   let convertedSql = convertPlaceholders(sql);
 
   if (isProd) {
-    // PostgreSQL не возвращает auto-generated id без RETURNING — иначе lastID будет null,
+    // PostgreSQL не возвращает auto-generated id без RETURNING — иначе lastID = null,
     // а вызывающий код потом дёргает /api/posts/null/publish и ловит "invalid input syntax for type integer".
-    // Для INSERT'ов автоматически добавляем RETURNING id (если ещё не добавлено).
-    if (/^\s*INSERT\s+INTO/i.test(convertedSql) && !/\bRETURNING\b/i.test(convertedSql)) {
+    // Для обычных INSERT'ов автоматически добавляем RETURNING id, ИСКЛЮЧАЯ upsert'ы (ON CONFLICT)
+    // — те используются для таблиц с не-id первичным ключом (settings.key, stats.date), где
+    // RETURNING id вызовет 'column "id" does not exist'.
+    const isInsert = /^\s*INSERT\s+INTO/i.test(convertedSql);
+    const hasReturning = /\bRETURNING\b/i.test(convertedSql);
+    const hasOnConflict = /\bON\s+CONFLICT\b/i.test(convertedSql);
+    if (isInsert && !hasReturning && !hasOnConflict) {
       convertedSql += ' RETURNING id';
     }
     return pgPool.query(convertedSql, params).then(res => {
