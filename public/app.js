@@ -6,6 +6,21 @@ const tg = window.Telegram.WebApp;
 let currentUser = null;
 let charts = {};
 
+// Безопасная обёртка над tg.showPopup: Telegram режет title>64, message>256,
+// и кидает WebAppPopupParamInvalid. Обрезаем + ловим любые ошибки.
+function safePopup(title, message, btnType = 'ok') {
+  const safeTitle = String(title || '').slice(0, 64);
+  let safeMessage = String(message || '').replace(/\s+/g, ' ').trim();
+  if (safeMessage.length > 256) safeMessage = safeMessage.slice(0, 253) + '...';
+  if (!safeMessage) safeMessage = ' ';
+  try {
+    tg.showPopup({ title: safeTitle, message: safeMessage, buttons: [{ type: btnType }] });
+  } catch (e) {
+    console.error('showPopup failed:', e.message, { title: safeTitle, message: safeMessage });
+    try { alert(`${safeTitle}\n\n${safeMessage}`); } catch (_) {}
+  }
+}
+
 // Глобальное состояние
 let state = {
   currentTab: 'overview',
@@ -604,22 +619,14 @@ function initEventHandlers() {
       
       if (res.ok) {
         const data = await res.json();
-        tg.showPopup({
-          title: 'Успешно',
-          message: `Сбор завершен! Создано новых черновиков: ${data.createdCount}`,
-          buttons: [{ type: 'ok' }]
-        });
+        safePopup('Успешно', `Сбор завершен! Создано новых черновиков: ${data.createdCount}`);
         await loadPosts();
       } else {
         throw new Error('Ошибка вызова API');
       }
     } catch (e) {
       console.error(e);
-      tg.showPopup({
-        title: 'Ошибка',
-        message: 'Не удалось запустить сбор новостей.',
-        buttons: [{ type: 'close' }]
-      });
+      safePopup('Ошибка', 'Не удалось запустить сбор новостей.');
     } finally {
       triggerBtn.disabled = false;
       triggerBtn.innerHTML = originalHtml;
@@ -645,21 +652,13 @@ function initEventHandlers() {
       });
 
       if (res.ok) {
-        tg.showPopup({
-          title: 'Настройки',
-          message: 'Настройки успешно сохранены!',
-          buttons: [{ type: 'ok' }]
-        });
+        safePopup('Настройки', 'Настройки успешно сохранены!');
         await loadSettings();
       } else {
         throw new Error();
       }
     } catch (err) {
-      tg.showPopup({
-        title: 'Ошибка',
-        message: 'Не удалось сохранить настройки.',
-        buttons: [{ type: 'close' }]
-      });
+      safePopup('Ошибка', 'Не удалось сохранить настройки.');
     }
   });
 
@@ -709,21 +708,13 @@ function initEventHandlers() {
       if (res.ok) {
         closeModal();
         orderForm.reset();
-        tg.showPopup({
-          title: 'Успешно',
-          message: 'Рекламный пост запланирован и сохранен в системе.',
-          buttons: [{ type: 'ok' }]
-        });
+        safePopup('Успешно', 'Рекламный пост запланирован и сохранен в системе.');
         await loadOrders();
       } else {
         throw new Error();
       }
     } catch (e) {
-      tg.showPopup({
-        title: 'Ошибка',
-        message: 'Не удалось создать рекламный заказ.',
-        buttons: [{ type: 'close' }]
-      });
+      safePopup('Ошибка', 'Не удалось создать рекламный заказ.');
     }
   });
 
@@ -761,21 +752,13 @@ function initEventHandlers() {
 
       if (res.ok) {
         closePostModal();
-        tg.showPopup({
-          title: 'Готово',
-          message: 'Пост успешно обновлен.',
-          buttons: [{ type: 'ok' }]
-        });
+        safePopup('Готово', 'Пост успешно обновлен.');
         await loadPosts();
       } else {
         throw new Error();
       }
     } catch (err) {
-      tg.showPopup({
-        title: 'Ошибка',
-        message: 'Не удалось обновить пост.',
-        buttons: [{ type: 'close' }]
-      });
+      safePopup('Ошибка', 'Не удалось обновить пост.');
     }
   });
 
@@ -799,11 +782,7 @@ function initEventHandlers() {
             throw new Error();
           }
         } catch (e) {
-          tg.showPopup({
-            title: 'Ошибка',
-            message: 'Не удалось удалить пост.',
-            buttons: [{ type: 'close' }]
-          });
+          safePopup('Ошибка', 'Не удалось удалить пост.');
         }
       }
     });
@@ -865,7 +844,7 @@ function initAiPromptModal() {
   async function generate() {
     const prompt = promptInput.value.trim();
     if (prompt.length < 5) {
-      tg.showPopup({ title: 'Промпт слишком короткий', message: 'Минимум 5 символов', buttons: [{ type: 'ok' }] });
+      safePopup('Промпт слишком короткий', 'Минимум 5 символов');
       return;
     }
     const withChannelStyle = styleToggle.checked;
@@ -886,14 +865,10 @@ function initAiPromptModal() {
       contentInput.value = data.content || '';
       showStage('result');
       if (data.warning) {
-        tg.showPopup({
-          title: '⚠️ Mock-контент',
-          message: data.warning + '\n\nЭто заглушка, не настоящая Gemini-генерация. Проверь env vars в Vercel.',
-          buttons: [{ type: 'ok' }]
-        });
+        safePopup('⚠️ Mock-контент', data.warning + '\n\nЭто заглушка, не настоящая Gemini-генерация. Проверь env vars в Vercel.');
       }
     } catch (e) {
-      tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+      safePopup('Ошибка', e.message);
     } finally {
       generateBtn.disabled = false;
       generateBtn.innerHTML = orig;
@@ -935,10 +910,10 @@ function initAiPromptModal() {
     try {
       await savePost('draft');
       closeModal();
-      tg.showPopup({ title: 'Сохранено', message: 'Пост добавлен в черновики', buttons: [{ type: 'ok' }] });
+      safePopup('Сохранено', 'Пост добавлен в черновики');
       await loadPosts();
     } catch (e) {
-      tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+      safePopup('Ошибка', e.message);
     }
   });
 
@@ -954,16 +929,16 @@ function initAiPromptModal() {
     }
     // Второе нажатие — сохраняем как scheduled
     if (!scheduleInput.value) {
-      tg.showPopup({ title: 'Внимание', message: 'Выбери дату публикации', buttons: [{ type: 'ok' }] });
+      safePopup('Внимание', 'Выбери дату публикации');
       return;
     }
     try {
       await savePost('scheduled', new Date(scheduleInput.value).toISOString());
       closeModal();
-      tg.showPopup({ title: 'Запланировано', message: 'Пост будет опубликован в указанное время', buttons: [{ type: 'ok' }] });
+      safePopup('Запланировано', 'Пост будет опубликован в указанное время');
       await loadPosts();
     } catch (e) {
-      tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+      safePopup('Ошибка', e.message);
     }
   });
 
@@ -982,10 +957,10 @@ function initAiPromptModal() {
         const pubData = await pubRes.json().catch(() => ({}));
         if (!pubRes.ok) throw new Error(pubData.error || 'Ошибка публикации');
         closeModal();
-        tg.showPopup({ title: 'Опубликовано', message: 'Пост отправлен в канал Telegram!', buttons: [{ type: 'ok' }] });
+        safePopup('Опубликовано', 'Пост отправлен в канал Telegram!');
         await refreshAllData();
       } catch (e) {
-        tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+        safePopup('Ошибка', e.message);
       } finally {
         publishBtn.disabled = false;
         publishBtn.innerHTML = orig;
@@ -1019,11 +994,7 @@ function attachPostButtonsListeners() {
 
             const data = await res.json().catch(() => ({}));
             if (res.ok) {
-              tg.showPopup({
-                title: 'Опубликовано',
-                message: 'Пост успешно отправлен в канал Telegram!',
-                buttons: [{ type: 'ok' }]
-              });
+              safePopup('Опубликовано', 'Пост успешно отправлен в канал Telegram!');
               await refreshAllData();
             } else {
               const msg = (data.error || 'Не удалось отправить пост') +
@@ -1031,11 +1002,7 @@ function attachPostButtonsListeners() {
               throw new Error(msg);
             }
           } catch (err) {
-            tg.showPopup({
-              title: 'Ошибка публикации',
-              message: err.message || 'Не удалось отправить пост в Telegram.',
-              buttons: [{ type: 'close' }]
-            });
+            safePopup('Ошибка публикации', err.message || 'Не удалось отправить пост в Telegram.');
             btn.disabled = false;
             btn.innerText = '🚀 Опубликовать';
           }
@@ -1168,10 +1135,10 @@ function attachOrderButtonsListeners() {
               const err = await res.json().catch(() => ({}));
               throw new Error(err.error || 'Ошибка одобрения');
             }
-            tg.showPopup({ title: 'Готово', message: 'Заявка одобрена и запланирована', buttons: [{ type: 'ok' }] });
+            safePopup('Готово', 'Заявка одобрена и запланирована');
             await refreshAllData();
           } catch (e) {
-            tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
+            safePopup('Ошибка', e.message);
             btn.disabled = false;
             btn.innerHTML = '✓ Одобрить';
           }
