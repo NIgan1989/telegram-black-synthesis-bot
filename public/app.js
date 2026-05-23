@@ -369,8 +369,10 @@ function renderPostsList(posts) {
         <button class="btn btn-danger btn-sm cancel-post-btn" data-id="${post.id}">❌ Отменить</button>
       `;
     } else {
+      // published — можно редактировать (синхронизируется с каналом) или удалять (из канала + БД)
       actionButtons = `
-        <button class="btn btn-secondary btn-sm delete-post-btn" data-id="${post.id}">🗑️ Удалить из БД</button>
+        <button class="btn btn-secondary btn-sm edit-post-btn" data-id="${post.id}">✏️ Изменить</button>
+        <button class="btn btn-danger btn-sm delete-post-btn" data-id="${post.id}">🗑️ Удалить</button>
       `;
     }
 
@@ -781,9 +783,16 @@ function initEventHandlers() {
         body: JSON.stringify(body)
       });
 
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         closePostModal();
-        safePopup('Готово', 'Пост успешно обновлен.');
+        if (data.warning) {
+          safePopup('⚠️ Частично', data.warning);
+        } else {
+          safePopup('Готово', body.status === 'published'
+            ? 'Пост обновлён и синхронизирован с каналом.'
+            : 'Пост успешно обновлён.');
+        }
         await loadPosts();
       } else {
         throw new Error();
@@ -797,24 +806,35 @@ function initEventHandlers() {
   const deletePostBtn = document.getElementById('btn-delete-post');
   deletePostBtn.addEventListener('click', async () => {
     const id = document.getElementById('edit-post-id').value;
+    const status = document.getElementById('edit-post-status').value;
+    const isPublished = status === 'published';
 
-    tg.showConfirm('Вы уверены, что хотите безвозвратно удалить этот пост?', async (confirmed) => {
-      if (confirmed) {
-        try {
-          const res = await fetch(`/api/posts/${id}`, {
-            method: 'DELETE',
-            headers: getHeaders()
-          });
+    const confirmMsg = isPublished
+      ? 'Удалить пост из канала Telegram и из базы? Подписчики больше не увидят его. Действие необратимо.'
+      : 'Удалить черновик? Действие необратимо.';
 
-          if (res.ok) {
-            closePostModal();
-            await loadPosts();
-          } else {
-            throw new Error();
+    tg.showConfirm(confirmMsg, async (confirmed) => {
+      if (!confirmed) return;
+      try {
+        const res = await fetch(`/api/posts/${id}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok) {
+          closePostModal();
+          if (data.warning) {
+            safePopup('⚠️ Частично', `${data.warning} Запись из БД удалена.`);
+          } else if (isPublished) {
+            safePopup('Удалено', 'Пост удалён из канала и базы.');
           }
-        } catch (e) {
-          safePopup('Ошибка', 'Не удалось удалить пост.');
+          await loadPosts();
+        } else {
+          throw new Error(data.error || 'Ошибка удаления');
         }
+      } catch (e) {
+        safePopup('Ошибка', e.message || 'Не удалось удалить пост.');
       }
     });
   });
@@ -1057,6 +1077,14 @@ function attachPostButtonsListeners() {
         document.getElementById('edit-post-title').value = post.title;
         document.getElementById('edit-post-content').value = post.content;
         document.getElementById('edit-post-media').value = post.media_url || '';
+
+        // Подсказка-предупреждение для уже опубликованных постов
+        const notice = document.getElementById('edit-published-notice');
+        if (post.status === 'published') {
+          notice.classList.remove('hidden');
+        } else {
+          notice.classList.add('hidden');
+        }
         
         const scheduleField = document.getElementById('edit-schedule-field');
         if (post.status === 'scheduled') {
@@ -1077,17 +1105,35 @@ function attachPostButtonsListeners() {
     });
   });
 
-  // Кнопка удаления для опубликованных постов
+  // Кнопка удаления (для опубликованных постов в списке)
   document.querySelectorAll('.delete-post-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const id = btn.getAttribute('data-id');
-      tg.showConfirm('Удалить запись о посте из базы данных? (Пост в Telegram останется)', async (confirmed) => {
-        if (confirmed) {
-          await fetch(`/api/posts/${id}`, {
+      const post = state.posts.find(p => String(p.id) === String(id));
+      const isPublished = post && post.status === 'published';
+
+      const msg = isPublished
+        ? 'Удалить пост из канала Telegram и из базы? Подписчики больше не увидят его. Действие необратимо.'
+        : 'Удалить пост из базы данных?';
+
+      tg.showConfirm(msg, async (confirmed) => {
+        if (!confirmed) return;
+        try {
+          const res = await fetch(`/api/posts/${id}`, {
             method: 'DELETE',
             headers: getHeaders()
           });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Ошибка удаления');
+          if (data.warning) {
+            safePopup('⚠️ Частично', `${data.warning} Запись из БД удалена.`);
+          } else if (isPublished) {
+            safePopup('Удалено', 'Пост удалён из канала и базы.');
+          }
           await loadPosts();
+        } catch (err) {
+          safePopup('Ошибка', err.message || 'Не удалось удалить пост.');
         }
       });
     });

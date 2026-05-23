@@ -211,6 +211,22 @@ app.put('/api/posts/:id', checkAuth, async (req, res) => {
       'UPDATE posts SET title = ?, content = ?, media_url = ?, status = ?, scheduled_at = ? WHERE id = ?',
       [title, content, media_url || null, status, scheduled_at || null, id]
     );
+
+    // Если пост уже опубликован — синхронизируем правки с каналом.
+    if (status === 'published') {
+      const updated = await db.get('SELECT * FROM posts WHERE id = ?', [id]);
+      if (updated && updated.telegram_message_id) {
+        try {
+          await bot.editPublishedPost(updated);
+        } catch (e) {
+          return res.json({
+            success: true,
+            warning: `БД обновлена, но не удалось изменить пост в канале: ${e.message}`
+          });
+        }
+      }
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -244,8 +260,19 @@ app.post('/api/posts/:id/publish', checkAuth, async (req, res) => {
 app.delete('/api/posts/:id', checkAuth, async (req, res) => {
   const { id } = req.params;
   try {
+    // Если пост опубликован — сначала удаляем его из канала Telegram.
+    const post = await db.get('SELECT * FROM posts WHERE id = ?', [id]);
+    let channelWarning = null;
+    if (post && post.status === 'published' && post.telegram_message_id) {
+      try {
+        await bot.deletePublishedPost(post);
+      } catch (e) {
+        channelWarning = e.message;
+      }
+    }
+
     await db.run('DELETE FROM posts WHERE id = ?', [id]);
-    res.json({ success: true });
+    res.json({ success: true, warning: channelWarning || undefined });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

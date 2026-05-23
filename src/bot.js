@@ -634,6 +634,93 @@ async function publishPost(post) {
   }
 }
 
+// Редактирование уже опубликованного в канал поста.
+// Не знаем заранее, был ли пост sendMessage (Telegraph-карточка) или sendPhoto (caption-фоллбэк),
+// поэтому пробуем editMessageText, при ошибке про "no text" фоллбэчимся на editMessageCaption.
+async function editPublishedPost(post) {
+  if (isDemo) {
+    console.log(`✏️ Demo: симуляция редактирования поста #${post.id} в канале`);
+    return;
+  }
+  if (!bot) initBot();
+  if (!bot) throw new Error('Бот не инициализирован');
+  if (!post.telegram_message_id) {
+    throw new Error('У поста нет telegram_message_id — нечего редактировать в канале');
+  }
+
+  const sanitized = gemini.sanitizeMarkdown(post.content || '');
+  const titleNorm = (post.title || '').toLowerCase().replace(/[*_\s]/g, '');
+  const firstLineNorm = (sanitized.split('\n')[0] || '').toLowerCase().replace(/[*_\s🏭📊⚙️💡🔬🛢️📈🌍🔥]/g, '');
+  const contentStartsWithTitle = firstLineNorm && titleNorm &&
+    (firstLineNorm === titleNorm || firstLineNorm.startsWith(titleNorm.slice(0, 24)));
+  const formatted = contentStartsWithTitle ? sanitized : `*${post.title}*\n\n${sanitized}`;
+  const newText = truncateToFit(formatted, 1024);
+
+  const baseOpts = {
+    chat_id: channelId,
+    message_id: post.telegram_message_id,
+    parse_mode: 'Markdown'
+  };
+
+  // Сценарий 1: пост был отправлен как sendMessage (Telegraph-карточка) → editMessageText.
+  try {
+    await bot.editMessageText(newText, baseOpts);
+    console.log(`✏️ Пост #${post.id}: editMessageText OK`);
+    return;
+  } catch (e) {
+    if (!/no text in the message|message can't be edited|MESSAGE_NOT_MODIFIED/i.test(e.message)) {
+      // Возможно, проблема с Markdown — попробуем без него
+      if (/can't parse entities/i.test(e.message)) {
+        try {
+          await bot.editMessageText(newText, { ...baseOpts, parse_mode: undefined });
+          console.log(`✏️ Пост #${post.id}: editMessageText (plain) OK`);
+          return;
+        } catch (_) { /* fallthrough */ }
+      }
+      // Если ошибка не "нет текста" — пробуем как caption
+    }
+  }
+
+  // Сценарий 2: пост был отправлен как sendPhoto (caption-фоллбэк) → editMessageCaption.
+  try {
+    await bot.editMessageCaption(newText, baseOpts);
+    console.log(`✏️ Пост #${post.id}: editMessageCaption OK`);
+  } catch (e) {
+    if (/can't parse entities/i.test(e.message)) {
+      await bot.editMessageCaption(newText, { ...baseOpts, parse_mode: undefined });
+      console.log(`✏️ Пост #${post.id}: editMessageCaption (plain) OK`);
+      return;
+    }
+    if (/MESSAGE_NOT_MODIFIED/i.test(e.message)) {
+      console.log(`ℹ️ Пост #${post.id}: содержимое не изменилось`);
+      return;
+    }
+    throw new Error(`Не удалось отредактировать пост в канале: ${e.message}`);
+  }
+}
+
+// Удаление поста из канала.
+async function deletePublishedPost(post) {
+  if (isDemo) {
+    console.log(`🗑️ Demo: симуляция удаления поста #${post.id} из канала`);
+    return;
+  }
+  if (!bot) initBot();
+  if (!bot || !post.telegram_message_id) return;
+
+  try {
+    await bot.deleteMessage(channelId, post.telegram_message_id);
+    console.log(`🗑️ Пост #${post.id} удалён из канала`);
+  } catch (e) {
+    // Telegram запрещает удалять сообщения старше 48 часов в каналах.
+    if (/message to delete not found|message can't be deleted|too old/i.test(e.message)) {
+      console.warn(`⚠️ Пост #${post.id}: ${e.message}`);
+      throw new Error(`Не удалось удалить из канала (${e.message}). Возможно, пост старше 48 часов — удали вручную в Telegram.`);
+    }
+    throw e;
+  }
+}
+
 // Получение количества подписчиков канала
 async function getSubscriberCount() {
   if (isDemo) {
@@ -690,6 +777,8 @@ async function generateMockCommentsForPost(internalPostId, tgMsgId) {
 module.exports = {
   initBot,
   publishPost,
+  editPublishedPost,
+  deletePublishedPost,
   getSubscriberCount,
   getBotInstance: () => bot
 };
