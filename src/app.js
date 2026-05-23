@@ -15,20 +15,29 @@ app.use(express.json());
 // Раздача статических файлов из папки public
 app.use(express.static('public'));
 
-// Прослойка для инициализации БД при первом запросе на Vercel (ленивая инициализация)
+// Ленивая инициализация БД и бота на холодном старте serverless.
+// БД и бот инициализируются независимо — если БД не поднялась, ошибка возвращается клиенту;
+// инициализация бота вызывается при каждом запросе, но идемпотентна (initBot проверяет внутри).
 let dbInitialized = false;
 app.use(async (req, res, next) => {
   if (!dbInitialized) {
     try {
       await db.init();
-      // Если это не локальный запуск (есть DATABASE_URL), инициализируем бота один раз
-      if (process.env.DATABASE_URL && !bot.getBotInstance()) {
-        bot.initBot();
-      }
       dbInitialized = true;
     } catch (e) {
-      console.error('❌ Ошибка отложенной инициализации базы/бота:', e.message);
+      console.error('❌ DB init failed:', e.message);
+      return res.status(500).json({
+        error: 'Ошибка подключения к базе данных',
+        details: e.message,
+        hint: 'Проверь DATABASE_URL в Vercel env vars: должен быть Transaction pooler URI с портом 6543 и юзером postgres.<project_ref>.'
+      });
     }
+  }
+  // Бот инициализируется при наличии DATABASE_URL (то есть на проде), если ещё не инициализирован.
+  // Делается ПОСЛЕ try/catch БД — чтобы и в случае краша БД не блокировать, и чтобы не пытаться повторно.
+  if (process.env.DATABASE_URL && !bot.getBotInstance()) {
+    try { bot.initBot(); }
+    catch (e) { console.error('❌ Bot init failed in middleware:', e.message); }
   }
   next();
 });
@@ -207,7 +216,11 @@ app.post('/api/posts/:id/publish', checkAuth, async (req, res) => {
     const tgMsgId = await bot.publishPost(post);
     res.json({ success: true, telegram_message_id: tgMsgId });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(`❌ Publish post #${id} failed:`, err.message, err.stack);
+    res.status(500).json({
+      error: err.message || 'Не удалось опубликовать пост',
+      hint: 'Если ошибка про бота — проверь TELEGRAM_BOT_TOKEN/TELEGRAM_CHANNEL_ID в Vercel env vars (Production). Если про Telegram API — убедись, что бот добавлен админом в канал с правом публикации.'
+    });
   }
 });
 

@@ -439,6 +439,14 @@ async function publishPost(post) {
     return fakeTgMsgId;
   }
 
+  // На холодном старте serverless-функции бот может быть ещё null — поднимем сейчас.
+  if (!bot) initBot();
+  if (!bot) {
+    throw new Error(
+      'Бот не инициализирован. Проверь TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID и DEMO_MODE в Vercel env vars (должны быть в Production).'
+    );
+  }
+
   try {
     const formattedContent = `*${post.title}*\n\n${post.content}`;
     const hasMedia = post.media_url && post.media_url.trim().startsWith('http');
