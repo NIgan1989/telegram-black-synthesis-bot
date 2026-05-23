@@ -212,26 +212,17 @@ async function handleCallbackQuery(cbq) {
   if (data === 'about') return sendAboutMessage(chatId, isAdmin);
 }
 
-// Разбивает длинный текст на куски ≤ limit символов по границе абзаца/предложения и шлёт по очереди в канал.
-// Возвращает последнее отправленное сообщение.
-async function sendLongText(text, opts, limit) {
-  const chunks = [];
-  let remaining = text;
-  while (remaining.length > limit) {
-    let cut = remaining.lastIndexOf('\n\n', limit);
-    if (cut < limit / 2) cut = remaining.lastIndexOf('\n', limit);
-    if (cut < limit / 2) cut = remaining.lastIndexOf('. ', limit) + 1;
-    if (cut < limit / 2) cut = limit;
-    chunks.push(remaining.slice(0, cut).trim());
-    remaining = remaining.slice(cut).trim();
-  }
-  if (remaining) chunks.push(remaining);
-
-  let last;
-  for (const chunk of chunks) {
-    last = await bot.sendMessage(channelId, chunk, opts);
-  }
-  return last;
+// Умная обрезка: режет на границе абзаца, потом строки, потом предложения.
+// Финальный символ — многоточие, чтобы было видно что текст обрезан.
+function truncateToFit(text, limit) {
+  if (!text || text.length <= limit) return text;
+  const target = limit - 1; // место под "…"
+  let cut = text.lastIndexOf('\n\n', target);
+  if (cut < target * 0.6) cut = text.lastIndexOf('\n', target);
+  if (cut < target * 0.6) cut = text.lastIndexOf('. ', target) + 1;
+  if (cut < target * 0.6) cut = text.lastIndexOf(' ', target);
+  if (cut < target * 0.5) cut = target;
+  return text.slice(0, cut).trim() + '…';
 }
 
 // Безопасная отправка с фоллбэком на plain text если Markdown не парсится
@@ -480,12 +471,23 @@ async function publishPost(post) {
     const CAPTION_LIMIT = 1024;
     const TEXT_LIMIT = 4096;
 
-    // Заголовок пост-контента: если в content уже есть жирный заголовок первой строкой
-    // (новый формат от Gemini), не дублируем; иначе оборачиваем post.title в *...*.
-    const contentStartsWithTitle = /^\s*[🏭📊⚙️💡🔬🛢️📈🌍🔥]?\s*\*[^*\n]+\*/.test(post.content || '');
+    // Санитарим Markdown (`**bold**` → `*bold*`, убираем `##` заголовки).
+    // Это критично — Telegram parse_mode='Markdown' не понимает GitHub-стиль,
+    // и без чистки пост уходит в plain-text fallback с буквальными звёздочками.
+    const cleanContent = gemini.sanitizeMarkdown(post.content || '');
+
+    // Дедуп заголовка: если первая строка содержимого уже похожа на title, не префиксуем.
+    const firstLineNorm = (cleanContent.split('\n')[0] || '')
+      .toLowerCase()
+      .replace(/[*_\s🏭📊⚙️💡🔬🛢️📈🌍🔥]/g, '');
+    const titleNorm = (post.title || '').toLowerCase().replace(/[*_\s]/g, '');
+    const contentStartsWithTitle = !!(
+      firstLineNorm && titleNorm &&
+      (firstLineNorm === titleNorm || firstLineNorm.startsWith(titleNorm.slice(0, 24)))
+    );
     const formattedContent = contentStartsWithTitle
-      ? post.content
-      : `*${post.title}*\n\n${post.content}`;
+      ? cleanContent
+      : `*${post.title}*\n\n${cleanContent}`;
 
     // Картинка обязательна: используем post.media_url, если есть валидный URL.
     // Иначе — фоллбэк на брендированную logo.png с того же Vercel-домена (стабильно доступна).
@@ -498,27 +500,23 @@ async function publishPost(post) {
     const mediaUrl = realMedia || fallbackImage;
     const hasMedia = !!mediaUrl;
 
-    // Единый отправщик: либо фото + текст в caption/отдельным сообщением, либо чистый текст.
+    // Единый отправщик: всегда ОДНО сообщение в канал — sendPhoto с полным текстом в caption.
+    // Telegram сам показывает компактную карточку (превью ~200 символов + "More") — тап разворачивает.
+    // Это естественный "карточка-разворот" формат топ-каналов.
+    // Длинные посты (>1024) умно обрезаются на границе абзаца/предложения с многоточием.
     const sendWith = async (media, useMarkdown) => {
       const opts = useMarkdown ? { parse_mode: 'Markdown' } : {};
-      const title = useMarkdown ? `*${post.title}*` : post.title;
 
       if (media) {
-        if (formattedContent.length <= CAPTION_LIMIT) {
-          return bot.sendPhoto(channelId, media, { caption: formattedContent, ...opts });
-        }
-        const captionFits = title.length <= CAPTION_LIMIT;
-        const photoMsg = captionFits
-          ? await bot.sendPhoto(channelId, media, { caption: title, ...opts })
-          : await bot.sendPhoto(channelId, media);
-        await sendLongText(post.content, opts, TEXT_LIMIT);
-        return photoMsg;
+        const caption = truncateToFit(formattedContent, CAPTION_LIMIT);
+        return bot.sendPhoto(channelId, media, { caption, ...opts });
       }
 
+      // Только если медиа нет вообще — отправляем текстом.
       if (formattedContent.length <= TEXT_LIMIT) {
         return bot.sendMessage(channelId, formattedContent, opts);
       }
-      return sendLongText(formattedContent, opts, TEXT_LIMIT);
+      return bot.sendMessage(channelId, truncateToFit(formattedContent, TEXT_LIMIT), opts);
     };
 
     const isParseErr = (e) => /can't parse entities|Bad Request: can't parse/i.test(e.message);

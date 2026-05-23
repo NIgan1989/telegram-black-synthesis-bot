@@ -76,12 +76,27 @@ async function generateArticle(rawNews) {
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    if (parsed.content) parsed.content = sanitizeMarkdown(parsed.content);
+    return parsed;
   } catch (error) {
     console.error('❌ Ошибка при генерации статьи через Gemini API:', error.message);
-    // Возвращаем мок-данные при ошибке API, чтобы система не падала
     return mockGenerateArticle(rawNews);
   }
+}
+
+// Чистка Markdown под Telegram legacy parse_mode: 'Markdown'.
+// Gemini регулярно генерит **bold** (GitHub-стиль) и ## заголовки — Telegram их не парсит и
+// показывает буквально. Конвертируем в одинарные * и убираем ## хедеры.
+function sanitizeMarkdown(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/\*\*\*([^*\n]+?)\*\*\*/g, '*$1*')         // ***bold-italic*** → *bold*
+    .replace(/\*\*([^*\n]+?)\*\*/g, '*$1*')             // **bold** → *bold*
+    .replace(/__([^_\n]+?)__/g, '_$1_')                 // __italic__ → _italic_
+    .replace(/^#{1,6}\s+/gm, '')                        // remove ## headings markers
+    .replace(/\n{3,}/g, '\n\n')                         // collapse triple+ newlines
+    .trim();
 }
 
 // Анализ тональности комментария
@@ -245,7 +260,9 @@ ${userPrompt}
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    if (parsed.content) parsed.content = sanitizeMarkdown(parsed.content);
+    return parsed;
   } catch (error) {
     console.error('❌ Ошибка генерации поста через Gemini:', error.message);
     return { ...mockGenerateFromPrompt(userPrompt, withChannelStyle), _mock: true, _reason: 'gemini_api_error', _error: error.message };
@@ -286,5 +303,6 @@ _(Демо-режим: реальная Gemini-генерация недосту
 module.exports = {
   generateArticle,
   analyzeSentiment,
-  generatePostFromPrompt
+  generatePostFromPrompt,
+  sanitizeMarkdown
 };
