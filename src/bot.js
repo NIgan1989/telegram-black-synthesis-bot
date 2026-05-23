@@ -200,6 +200,28 @@ async function handleCallbackQuery(cbq) {
   if (data === 'about') return sendAboutMessage(chatId, isAdmin);
 }
 
+// Разбивает длинный текст на куски ≤ limit символов по границе абзаца/предложения и шлёт по очереди в канал.
+// Возвращает последнее отправленное сообщение.
+async function sendLongText(text, opts, limit) {
+  const chunks = [];
+  let remaining = text;
+  while (remaining.length > limit) {
+    let cut = remaining.lastIndexOf('\n\n', limit);
+    if (cut < limit / 2) cut = remaining.lastIndexOf('\n', limit);
+    if (cut < limit / 2) cut = remaining.lastIndexOf('. ', limit) + 1;
+    if (cut < limit / 2) cut = limit;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  if (remaining) chunks.push(remaining);
+
+  let last;
+  for (const chunk of chunks) {
+    last = await bot.sendMessage(channelId, chunk, opts);
+  }
+  return last;
+}
+
 // Безопасная отправка с фоллбэком на plain text если Markdown не парсится
 async function safeSend(chatId, text, options = {}) {
   if (!bot) return null;
@@ -448,15 +470,37 @@ async function publishPost(post) {
   }
 
   try {
+    // Telegram лимиты: caption у sendPhoto = 1024 символа, текст у sendMessage = 4096.
+    const CAPTION_LIMIT = 1024;
+    const TEXT_LIMIT = 4096;
     const formattedContent = `*${post.title}*\n\n${post.content}`;
     const hasMedia = post.media_url && post.media_url.trim().startsWith('http');
 
+    // Стратегия отправки одного поста с учётом лимитов:
+    //  • фото + короткий текст → одно sendPhoto с caption (как было);
+    //  • фото + длинный текст  → sendPhoto с заголовком в caption, затем sendMessage с телом;
+    //  • без фото + любой текст → sendMessage, при длине > 4096 разбиваем на части.
     const send = async (useMarkdown) => {
       const opts = useMarkdown ? { parse_mode: 'Markdown' } : {};
+      const title = useMarkdown ? `*${post.title}*` : post.title;
+
       if (hasMedia) {
-        return bot.sendPhoto(channelId, post.media_url, { caption: formattedContent, ...opts });
+        if (formattedContent.length <= CAPTION_LIMIT) {
+          return bot.sendPhoto(channelId, post.media_url, { caption: formattedContent, ...opts });
+        }
+        // Слишком длинно для caption — отправляем фото с заголовком, затем тело отдельным сообщением.
+        const captionFits = title.length <= CAPTION_LIMIT;
+        const photoMsg = captionFits
+          ? await bot.sendPhoto(channelId, post.media_url, { caption: title, ...opts })
+          : await bot.sendPhoto(channelId, post.media_url);
+        await sendLongText(post.content, opts, TEXT_LIMIT);
+        return photoMsg;
       }
-      return bot.sendMessage(channelId, formattedContent, opts);
+
+      if (formattedContent.length <= TEXT_LIMIT) {
+        return bot.sendMessage(channelId, formattedContent, opts);
+      }
+      return sendLongText(formattedContent, opts, TEXT_LIMIT);
     };
 
     let resultMessage;
