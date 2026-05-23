@@ -254,6 +254,23 @@
           </div>
 
           <div class="form-group glass mt-2">
+            <h3>Комментарии и обсуждение</h3>
+            <div class="toggle-control mt-1">
+              <div>
+                <label class="toggle-title">Разрешить комментарии под постами</label>
+                <p class="toggle-desc">Комментарии работают через привязанную группу обсуждения «Чёрный Синтез — Обсуждение». Включено = подписчики могут комментировать любой пост. Выключено = бот при публикации удаляет пересланную копию из группы обсуждения, и кнопка «Комментировать» под постом пропадает.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="setting-comments-enabled" checked>
+                <span class="slider round"></span>
+              </label>
+            </div>
+            <p class="input-help mt-1">
+              💡 Чтобы выключить комментарии под одним конкретным постом — открой пост в канале, нажми «⋯» → «Disable Comments». Через бота это сделать нельзя (ограничение Telegram Bot API).
+            </p>
+          </div>
+
+          <div class="form-group glass mt-2">
             <h3>Параметры интеграции</h3>
             
             <div class="input-field mt-1">

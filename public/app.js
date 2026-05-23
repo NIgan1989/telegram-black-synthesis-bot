@@ -309,6 +309,8 @@ async function loadSettings() {
     document.getElementById('setting-auto-post').checked = settings.auto_post === 'true';
     document.getElementById('setting-channels-list').value = settings.channels_list || '';
     document.getElementById('setting-post-interval').value = settings.post_interval || '6';
+    // По умолчанию комментарии включены (если ключа нет в БД)
+    document.getElementById('setting-comments-enabled').checked = settings.comments_enabled !== 'false';
     
     if (settings.channels_list) {
       document.getElementById('channel-username').innerText = settings.channels_list;
@@ -669,7 +671,8 @@ function initEventHandlers() {
     const settings = {
       auto_post: document.getElementById('setting-auto-post').checked ? 'true' : 'false',
       channels_list: document.getElementById('setting-channels-list').value,
-      post_interval: document.getElementById('setting-post-interval').value
+      post_interval: document.getElementById('setting-post-interval').value,
+      comments_enabled: document.getElementById('setting-comments-enabled').checked ? 'true' : 'false'
     };
 
     try {

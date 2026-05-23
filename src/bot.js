@@ -160,8 +160,38 @@ async function handleIncomingMessage(msg) {
   }
 
   const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-  if (isGroup && msg.reply_to_message) {
+  if (!isGroup) return;
+
+  // В группе обсуждения два сценария:
+  // 1. msg.reply_to_message → это коммент подписчика → существующая логика трекинга
+  // 2. msg.forward_from_chat === канал → это пересылка нашего поста, появившаяся автоматически.
+  //    Если комменты в глобальных настройках выключены — удаляем эту пересылку,
+  //    и кнопка "Комментировать" под постом канала пропадает.
+  if (msg.reply_to_message) {
     await handleGroupComment(msg);
+    return;
+  }
+
+  if (msg.forward_from_chat) {
+    const isFromChannel = String(msg.forward_from_chat.id) === String(channelId) ||
+      msg.forward_from_chat.username === String(channelId).replace('@', '');
+    if (isFromChannel) {
+      await maybeDisableComments(msg);
+    }
+  }
+}
+
+// Удаляет пересылку нашего поста из группы обсуждения, если комменты в настройках выключены.
+async function maybeDisableComments(msg) {
+  try {
+    const setting = await db.get("SELECT value FROM settings WHERE key = 'comments_enabled'");
+    const enabled = !setting || setting.value !== 'false';
+    if (enabled) return; // По умолчанию включены — ничего не делаем
+
+    await bot.deleteMessage(msg.chat.id, msg.message_id);
+    console.log(`🚫 Комменты выключены глобально → удалена пересылка channel-поста #${msg.forward_from_message_id} из группы обсуждения`);
+  } catch (e) {
+    console.error('❌ Не удалось удалить пересылку для отключения комментов:', e.message);
   }
 }
 
