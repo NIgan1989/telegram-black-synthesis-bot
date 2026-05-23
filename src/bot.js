@@ -245,10 +245,6 @@ async function sendStartMessage(chatId, isAdmin) {
     ? `📢 Канал: [${channelId}](${channelUrl})`
     : `📢 Канал: ${channelId || ''}`;
 
-  const adminHint = isAdmin && webAppUrl
-    ? `\n\n🛠 У тебя есть кнопка *Админка* в меню внизу и команда /admin для открытия Mini App.`
-    : '';
-
   const text = `👋 *Добро пожаловать!*
 
 *Чёрный Синтез* — аналитический канал о химической и нефтехимической промышленности Казахстана и стран СНГ.
@@ -261,7 +257,7 @@ ${channelLine}
 • Обзоры рынка полимеров и удобрений
 • Новости заводов и кластеров
 
-Используй кнопки внизу — меню закреплено в этом чате.${adminHint}`;
+Используй кнопки внизу — меню закреплено в этом чате.`;
 
   return safeSend(chatId, text, {
     parse_mode: 'Markdown',
@@ -297,12 +293,10 @@ async function sendHelpMessage(chatId, isAdmin) {
     '/start — приветствие и быстрый старт',
     '/about — подробнее о канале',
     '/order — заказать рекламу',
-    '/help — этот список'
+    '/help — этот список',
+    '',
+    '_Внизу чата закреплено меню с кнопками._'
   ];
-  if (isAdmin) {
-    lines.push('', '🛠 *Для администратора:*', '/admin — открыть админ-панель', '/stats — быстрая статистика');
-  }
-  lines.push('', '_Внизу чата закреплено меню с кнопками._');
   return safeSend(chatId, lines.join('\n'), {
     parse_mode: 'Markdown',
     reply_markup: getMainKeyboard(isAdmin)
