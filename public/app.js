@@ -802,6 +802,60 @@ function initEventHandlers() {
     }
   });
 
+  // Доработать пост через ИИ — chips проставляют готовые инструкции в textarea + клик «Применить»
+  const aiInstrInput = document.getElementById('edit-ai-instruction');
+  const aiApplyBtn = document.getElementById('btn-edit-ai-apply');
+
+  document.querySelectorAll('.chip-btn[data-improve-prompt]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      aiInstrInput.value = chip.getAttribute('data-improve-prompt');
+      aiInstrInput.focus();
+    });
+  });
+
+  aiApplyBtn.addEventListener('click', async () => {
+    const instruction = aiInstrInput.value.trim();
+    if (instruction.length < 3) {
+      safePopup('Подождите', 'Опиши задачу или выбери один из пресетов выше.');
+      return;
+    }
+    const titleEl = document.getElementById('edit-post-title');
+    const contentEl = document.getElementById('edit-post-content');
+
+    const orig = aiApplyBtn.innerHTML;
+    aiApplyBtn.disabled = true;
+    aiApplyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gemini переписывает…';
+
+    try {
+      const res = await fetch('/api/posts/improve', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          title: titleEl.value,
+          content: contentEl.value,
+          instruction
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Ошибка доработки');
+
+      titleEl.value = data.title || titleEl.value;
+      contentEl.value = data.content || contentEl.value;
+      aiInstrInput.value = '';
+
+      if (data.warning) {
+        safePopup('⚠️ Mock-режим', data.warning);
+      } else {
+        safePopup('✅ Готово', 'Текст переписан. Проверь и нажми «Сохранить» для применения.');
+      }
+    } catch (e) {
+      safePopup('Ошибка', e.message);
+    } finally {
+      aiApplyBtn.disabled = false;
+      aiApplyBtn.innerHTML = orig;
+    }
+  });
+
   // Удаление поста из модалки
   const deletePostBtn = document.getElementById('btn-delete-post');
   deletePostBtn.addEventListener('click', async () => {

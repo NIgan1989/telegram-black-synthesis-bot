@@ -488,6 +488,36 @@ app.post('/api/orders/:id/approve', checkAuth, async (req, res) => {
   }
 });
 
+// 7a-bis. Доработка существующего поста через ИИ (для модалки редактирования).
+// Не пишет в БД — возвращает новые {title, content}, фронт подставляет в форму.
+app.post('/api/posts/improve', checkAuth, async (req, res) => {
+  const { title, content, instruction } = req.body || {};
+  if (!instruction || typeof instruction !== 'string' || instruction.trim().length < 3) {
+    return res.status(400).json({ error: 'Инструкция обязательна (минимум 3 символа)' });
+  }
+  if (!content || typeof content !== 'string' || content.trim().length < 5) {
+    return res.status(400).json({ error: 'Содержимое поста пустое, нечего дорабатывать' });
+  }
+  try {
+    const improved = await gemini.improvePost({
+      title: title || '',
+      content: content || '',
+      instruction: instruction.trim()
+    });
+    const response = { success: true, title: improved.title, content: improved.content };
+    if (improved._mock) {
+      response.warning = improved._reason === 'no_api_key'
+        ? 'GEMINI_API_KEY не задан — вернулся mock без реальной доработки.'
+        : improved._reason === 'demo_mode_on'
+          ? 'DEMO_MODE=true — вернулся mock.'
+          : `Gemini API ошибка: ${improved._error || 'unknown'}`;
+    }
+    res.json(response);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 7a. Генерация поста по произвольному промпту (на лету, без сохранения)
 app.post('/api/posts/generate', checkAuth, async (req, res) => {
   const { prompt, withChannelStyle } = req.body || {};

@@ -407,6 +407,25 @@
           <textarea id="edit-post-content" rows="10" required></textarea>
         </div>
 
+        <div class="ai-improve-box mt-2">
+          <div class="ai-improve-header">
+            <span>✨ Доработать через ИИ</span>
+          </div>
+          <div class="ai-quick-chips">
+            <button type="button" class="chip-btn" data-improve-prompt="Сделай пост короче и лаконичнее, оставь только самые важные факты">📝 Короче</button>
+            <button type="button" class="chip-btn" data-improve-prompt="Сделай тон более экспертным и аналитическим, добавь индустриальную терминологию">🎓 Экспертнее</button>
+            <button type="button" class="chip-btn" data-improve-prompt="Улучши структуру: чёткий лид, маркированные ключевые факты, аналитический вывод">📐 Структура</button>
+            <button type="button" class="chip-btn" data-improve-prompt="Добавь больше технических деталей о технологии, катализаторах и процессах">⚙️ Тех.детали</button>
+            <button type="button" class="chip-btn" data-improve-prompt="Перефразируй пост свежее, избегая канцелярита и шаблонных фраз">🔄 Переписать</button>
+            <button type="button" class="chip-btn" data-improve-prompt="Усиль заголовок — сделай его цепляющим, но без кликбейта">🎯 Заголовок</button>
+          </div>
+          <textarea id="edit-ai-instruction" rows="2" placeholder="…или свой запрос: «добавь упоминание Атырауского НПЗ» или «убери все упоминания цен»"></textarea>
+          <button type="button" class="btn btn-primary btn-block mt-1" id="btn-edit-ai-apply">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> Применить ИИ
+          </button>
+          <p class="input-help">Текущий текст уйдёт в Gemini вместе с твоей инструкцией. Результат заменит поля «Заголовок» и «Текст». Не сохраняет автоматически — нужно нажать «Сохранить».</p>
+        </div>
+
         <div class="input-field mt-2">
           <label for="edit-post-media">Ссылка на изображение</label>
           <input type="url" id="edit-post-media">

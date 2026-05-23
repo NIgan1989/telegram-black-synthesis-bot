@@ -300,9 +300,69 @@ _(Демо-режим: реальная Gemini-генерация недосту
   return { title: shortPrompt, content, imageKeywords };
 }
 
+// Доработка существующего поста через Gemini: принимает текущие title+content и инструкцию редактора,
+// возвращает переписанный {title, content}. Используется в модалке редактирования поста.
+async function improvePost({ title, content, instruction }) {
+  if (isDemo) {
+    return { ...mockImprovePost(title, content, instruction), _mock: true, _reason: !process.env.GEMINI_API_KEY ? 'no_api_key' : 'demo_mode_on' };
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING', description: 'Цепляющий заголовок поста на русском.' },
+            content: { type: 'STRING', description: 'Переписанный текст в Markdown с одинарными звёздочками.' }
+          },
+          required: ['title', 'content']
+        }
+      }
+    });
+
+    const prompt = `Ты — редактор Telegram-канала "Чёрный Синтез" о химической и нефтехимической промышленности Казахстана и СНГ.
+
+ТЕКУЩИЙ ПОСТ:
+Заголовок: ${title || '(не задан)'}
+
+Содержимое:
+${content || '(пусто)'}
+
+ЗАДАЧА ОТ РЕДАКТОРА:
+${instruction}
+
+ПРАВИЛА:
+1. Перепиши пост согласно задаче, не меняя главный смысл и фактическую базу.
+2. Сохраняй структуру: эмодзи-заголовок → лид → 📊 *Ключевые факты* → ⚙️ *Технология* → 💡 *Вывод* → #хэштеги.
+3. Markdown: одинарные звёздочки *жирный*, подчёркивания _курсив_. НЕ используй ** или ##.
+4. Длина: 600-900 символов (без хэштегов), чтобы помещалось в Telegraph-карточку.
+5. Не пиши пояснений до или после JSON.`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const parsed = JSON.parse(text);
+    if (parsed.content) parsed.content = sanitizeMarkdown(parsed.content);
+    return parsed;
+  } catch (error) {
+    console.error('❌ Ошибка доработки поста через Gemini:', error.message);
+    return { ...mockImprovePost(title, content, instruction), _mock: true, _reason: 'gemini_api_error', _error: error.message };
+  }
+}
+
+function mockImprovePost(title, content, instruction) {
+  return {
+    title: title || 'Заголовок (демо)',
+    content: `${content || ''}\n\n_[Демо-режим: реальная доработка недоступна. Инструкция была: "${instruction.slice(0, 100)}"]_`
+  };
+}
+
 module.exports = {
   generateArticle,
   analyzeSentiment,
   generatePostFromPrompt,
+  improvePost,
   sanitizeMarkdown
 };
