@@ -1009,6 +1009,7 @@ function attachPostButtonsListeners() {
               headers: getHeaders()
             });
 
+            const data = await res.json().catch(() => ({}));
             if (res.ok) {
               tg.showPopup({
                 title: 'Опубликовано',
@@ -1017,12 +1018,14 @@ function attachPostButtonsListeners() {
               });
               await refreshAllData();
             } else {
-              throw new Error();
+              const msg = (data.error || 'Не удалось отправить пост') +
+                          (data.hint ? `\n\n💡 ${data.hint}` : '');
+              throw new Error(msg);
             }
           } catch (err) {
             tg.showPopup({
-              title: 'Ошибка',
-              message: 'Не удалось отправить пост в Telegram.',
+              title: 'Ошибка публикации',
+              message: err.message || 'Не удалось отправить пост в Telegram.',
               buttons: [{ type: 'close' }]
             });
             btn.disabled = false;
