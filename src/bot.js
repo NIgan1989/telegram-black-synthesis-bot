@@ -72,16 +72,37 @@ function initBot() {
 async function registerBotCommands() {
   if (commandsRegistered || !bot) return;
   commandsRegistered = true;
+
+  const publicCommands = [
+    { command: 'start', description: 'Информация о канале' },
+    { command: 'about', description: 'О канале «Чёрный Синтез»' },
+    { command: 'order', description: 'Заказать рекламу' },
+    { command: 'help', description: 'Список команд' }
+  ];
+
+  const adminCommands = [
+    ...publicCommands,
+    { command: 'admin', description: 'Открыть админ-панель' },
+    { command: 'stats', description: 'Быстрая статистика канала' }
+  ];
+
   try {
-    await bot.setMyCommands([
-      { command: 'start', description: 'Информация о канале' },
-      { command: 'about', description: 'О канале «Чёрный Синтез»' },
-      { command: 'order', description: 'Заказать рекламу' },
-      { command: 'help', description: 'Список команд' }
-    ]);
-    console.log('✅ Команды бота зарегистрированы в Telegram');
+    await bot.setMyCommands(publicCommands);
+    console.log('✅ Публичные команды бота зарегистрированы');
   } catch (e) {
-    console.error('❌ Не удалось зарегистрировать команды:', e.message);
+    console.error('❌ Не удалось зарегистрировать публичные команды:', e.message);
+  }
+
+  // Для админа в личке регистрируем расширенный набор — будет видно в подсказках "/"
+  if (adminTelegramId) {
+    try {
+      await bot.setMyCommands(adminCommands, {
+        scope: { type: 'chat', chat_id: Number(adminTelegramId) }
+      });
+      console.log('✅ Расширенный набор команд зарегистрирован для админа');
+    } catch (e) {
+      console.error('❌ Не удалось зарегистрировать команды админа:', e.message);
+    }
   }
 }
 

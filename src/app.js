@@ -34,15 +34,16 @@ app.use(async (req, res, next) => {
 });
 
 // Middleware для авторизации по Telegram WebApp initData
-// Для простоты сверяем ID пользователя с ADMIN_TELEGRAM_ID.
-// В проде мы также проверяем подпись Telegram.
+// Принимает три формата Authorization-заголовка (все приходят URL-encoded):
+//  1. Telegram initData (query-строка query_id=...&user={...}&auth_date=...&hash=...)
+//  2. JSON-обёртка вида {"user":{"id":...}}
+//  3. Голый числовой ID (для локальных тестов)
 function checkAuth(req, res, next) {
   const authHeader = req.headers.authorization;
   const adminId = process.env.ADMIN_TELEGRAM_ID;
   const isDemo = process.env.DEMO_MODE === 'true';
 
   if (isDemo || !adminId) {
-    // В демо-режиме пропускаем запросы
     return next();
   }
 
@@ -50,28 +51,32 @@ function checkAuth(req, res, next) {
     return res.status(401).json({ error: 'Не авторизован (отсутствует токен авторизации)' });
   }
 
-  try {
-    // Наша админка будет присылать JSON строку с initData
-    const initData = JSON.parse(decodeURIComponent(authHeader));
-    const userId = initData.user ? String(initData.user.id) : null;
+  const decoded = decodeURIComponent(authHeader);
+  const adminIdStr = String(adminId);
 
-    if (userId && userId === String(adminId)) {
-      return next();
-    }
-    
-    // Вспомогательный метод на случай если пришел голый ID
-    if (String(authHeader) === String(adminId)) {
-      return next();
-    }
+  // 3. Голый ID
+  if (decoded === adminIdStr) return next();
 
-    return res.status(403).json({ error: 'Доступ запрещен (неверный Telegram ID)' });
-  } catch (err) {
-    // Если пришел просто ID (для локальных тестов)
-    if (String(authHeader) === String(adminId)) {
-      return next();
-    }
-    return res.status(401).json({ error: 'Ошибка проверки авторизации' });
+  // 1. Telegram initData (URL query string c полем user=<json>)
+  if (decoded.includes('user=')) {
+    try {
+      const params = new URLSearchParams(decoded);
+      const userJson = params.get('user');
+      if (userJson) {
+        const user = JSON.parse(userJson);
+        if (user && String(user.id) === adminIdStr) return next();
+      }
+    } catch (_) { /* падаем дальше на JSON-обёртку */ }
   }
+
+  // 2. JSON-обёртка
+  try {
+    const obj = JSON.parse(decoded);
+    const userId = obj && obj.user ? String(obj.user.id) : null;
+    if (userId && userId === adminIdStr) return next();
+  } catch (_) { /* не JSON — игнорируем */ }
+
+  return res.status(403).json({ error: 'Доступ запрещен (неверный Telegram ID)' });
 }
 
 // 1. Авторизация
