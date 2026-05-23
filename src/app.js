@@ -126,26 +126,41 @@ app.post('/api/auth', (req, res) => {
 // 2. Получение общей статистики
 app.get('/api/stats', checkAuth, async (req, res) => {
   try {
-    // Получаем последние 7 записей статистики
+    // Последние 7 записей статистики подписчиков
     const statsData = await db.query('SELECT * FROM stats ORDER BY date DESC LIMIT 7');
-    
-    // Получаем общее количество постов, заказов и комментариев
+
+    // Реальные счётчики прямо из таблиц — всегда актуальны.
     const postsCount = await db.get('SELECT COUNT(*) as count FROM posts');
     const ordersCount = await db.get("SELECT COUNT(*) as count FROM orders WHERE status = 'completed' OR status = 'paid'");
     const commentsCount = await db.get('SELECT COUNT(*) as count FROM comments');
-    
-    // Получаем тональность комментариев
+
     const sentiments = await db.query(
       'SELECT sentiment, COUNT(*) as count FROM comments GROUP BY sentiment'
     );
-    
-    // Форматируем тональность для удобства
     const sentimentCounts = { positive: 0, neutral: 0, negative: 0 };
     sentiments.forEach(s => {
       sentimentCounts[s.sentiment] = parseInt(s.count) || 0;
     });
 
-    // Расчет вовлеченности (engagement rate)
+    // active_engagement по дням — пересчитываем ВСЕГДА из comments напрямую,
+    // чтобы удалённые комменты убирались из стат-графика, а не оставались "залипшими".
+    // (Старая логика просто инкрементила stats.active_engagement при INSERT в comments
+    // и не уменьшала при DELETE.)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+    const recentComments = await db.query(
+      'SELECT created_at FROM comments WHERE created_at >= ?',
+      [sevenDaysAgo]
+    );
+    const engagementByDay = {};
+    for (const c of recentComments) {
+      const day = String(c.created_at || '').slice(0, 10); // YYYY-MM-DD
+      if (day) engagementByDay[day] = (engagementByDay[day] || 0) + 1;
+    }
+    statsData.forEach(stat => {
+      const day = String(stat.date || '').slice(0, 10);
+      stat.active_engagement = engagementByDay[day] || 0;
+    });
+
     const totalViews = statsData.reduce((sum, s) => sum + (s.total_views || 0), 0);
     const totalEngagement = statsData.reduce((sum, s) => sum + (s.active_engagement || 0), 0);
 
