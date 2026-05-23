@@ -351,12 +351,51 @@ app.put('/api/orders/:id', checkAuth, async (req, res) => {
 app.get('/api/comments', checkAuth, async (req, res) => {
   try {
     const comments = await db.query(`
-      SELECT c.*, p.title as post_title 
+      SELECT c.*, p.title as post_title
       FROM comments c
       LEFT JOIN posts p ON c.post_id = p.id
       ORDER BY c.id DESC LIMIT 50
     `);
     res.json(comments);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Удаление комментария: убираем из БД и пытаемся удалить из группы обсуждения.
+// Telegram Bot API не присылает события об удалении подписчиком собственного коммента —
+// поэтому эта ручка нужна, чтобы админ мог синхронизировать состояние вручную.
+app.delete('/api/comments/:id', checkAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const comment = await db.get('SELECT * FROM comments WHERE id = ?', [id]);
+    if (!comment) return res.status(404).json({ error: 'Комментарий не найден в БД' });
+
+    let tgWarning = null;
+    if (comment.telegram_message_id) {
+      // Найдём group_chat_id из канала через getChat (linked_chat_id).
+      const botInstance = bot.getBotInstance();
+      if (botInstance) {
+        try {
+          const chat = await botInstance.getChat(process.env.TELEGRAM_CHANNEL_ID);
+          if (chat && chat.linked_chat_id) {
+            await botInstance.deleteMessage(chat.linked_chat_id, comment.telegram_message_id);
+          } else {
+            tgWarning = 'У канала не привязана группа обсуждения — удалить из Telegram нечего';
+          }
+        } catch (e) {
+          // Не валим всё — комментарий мог уже быть удалён пользователем.
+          if (/message to delete not found|message can't be deleted/i.test(e.message)) {
+            tgWarning = 'В Telegram сообщения уже нет (возможно, удалено автором)';
+          } else {
+            tgWarning = `Не удалось удалить из Telegram: ${e.message}`;
+          }
+        }
+      }
+    }
+
+    await db.run('DELETE FROM comments WHERE id = ?', [id]);
+    res.json({ success: true, warning: tgWarning || undefined });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -568,10 +607,19 @@ app.post('/api/channel/pin-ad', checkAuth, async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('❌ pin-ad failed:', err.message);
-    res.status(500).json({
-      error: err.message,
-      hint: 'Бот должен быть админом канала с правом "Закреплять сообщения". Проверь Settings → Administrators в Telegram.'
-    });
+    // Подбираем подсказку под конкретную ошибку, а не одну на все случаи.
+    let hint = '';
+    const m = err.message;
+    if (/BUTTON_TYPE_INVALID/i.test(m)) {
+      hint = 'Сервер ещё не задеплоил фикс кнопок (web_app → URL deeplink). Подожди 1-2 мин после последнего push, либо сделай Redeploy в Vercel.';
+    } else if (/not enough rights to pin|need administrator rights|CHAT_ADMIN_REQUIRED/i.test(m)) {
+      hint = 'Бот должен быть админом канала с правом "Закрепление сообщений". Проверь Telegram → канал → Управление → Администраторы.';
+    } else if (/chat not found|bot is not a member/i.test(m)) {
+      hint = 'Канал не найден или бот не админ. Проверь TELEGRAM_CHANNEL_ID в Vercel env vars и что бот добавлен в канал.';
+    } else if (/Unauthorized/i.test(m)) {
+      hint = 'Неверный TELEGRAM_BOT_TOKEN. Сбрось через @BotFather → /revoke и обнови в Vercel env vars.';
+    }
+    res.status(500).json({ error: m, hint });
   }
 });
 

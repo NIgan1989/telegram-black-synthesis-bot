@@ -504,8 +504,40 @@ function renderCommentsFeed(comments) {
         <span class="comment-post-title">Тема: ${comment.post_title || 'Общие вопросы'}</span>
         <span>${formattedDate}</span>
       </div>
+      <div class="comment-actions">
+        <button class="btn btn-danger btn-sm delete-comment-btn" data-id="${comment.id}">
+          <i class="fa-solid fa-trash"></i> Удалить
+        </button>
+      </div>
     `;
     container.appendChild(card);
+  });
+
+  // Привязка хендлеров на кнопки удаления
+  container.querySelectorAll('.delete-comment-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      tg.showConfirm('Удалить этот комментарий из БД и из группы обсуждения? Действие необратимо.', async (ok) => {
+        if (!ok) return;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+        try {
+          const res = await fetch(`/api/comments/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Ошибка удаления');
+          if (data.warning) safePopup('⚠️ Частично', `${data.warning} Из БД удалён.`);
+          await loadComments();
+          await loadStats(); // обновляем счётчики
+        } catch (e) {
+          safePopup('Ошибка', e.message);
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-trash"></i> Удалить';
+        }
+      });
+    });
   });
 }
 
@@ -715,6 +747,22 @@ function initEventHandlers() {
       safePopup('Ошибка', 'Не удалось сохранить настройки.');
     }
   });
+
+  // 3c. Обновить ленту комментариев + статистику
+  const refreshCommentsBtn = document.getElementById('btn-refresh-comments');
+  if (refreshCommentsBtn) {
+    refreshCommentsBtn.addEventListener('click', async () => {
+      const orig = refreshCommentsBtn.innerHTML;
+      refreshCommentsBtn.disabled = true;
+      refreshCommentsBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      try {
+        await Promise.all([loadComments(), loadStats()]);
+      } finally {
+        refreshCommentsBtn.disabled = false;
+        refreshCommentsBtn.innerHTML = orig;
+      }
+    });
+  }
 
   // 3b. Кнопки управления рекламной плашкой в канале
   const pinAdBtn = document.getElementById('btn-pin-ad');

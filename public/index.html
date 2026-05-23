@@ -221,9 +221,16 @@
 
       <!-- Секция 4: Комментарии и анализ тональности -->
       <section id="tab-comments" class="tab-content">
-        <h2>Анализ тональности комментариев</h2>
-        <p class="section-description">Комментарии автоматически собираются из группы обсуждения и оцениваются ИИ Google Gemini.</p>
-        
+        <div class="tab-header-actions">
+          <h2>Отзывы и тональность</h2>
+          <button class="btn btn-secondary btn-sm" id="btn-refresh-comments" title="Обновить из БД">
+            <i class="fa-solid fa-rotate"></i> Обновить
+          </button>
+        </div>
+        <p class="section-description mt-1">
+          Комментарии собираются ботом из группы обсуждения и оцениваются Gemini. Telegram не уведомляет о собственных удалениях подписчиков — если коммент пропал в Telegram, нажми «Удалить» здесь чтобы синхронизировать.
+        </p>
+
         <!-- Лента комментариев -->
         <div id="comments-feed" class="comments-feed mt-2">
           <div class="no-data glass">
