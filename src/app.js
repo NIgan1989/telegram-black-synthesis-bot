@@ -220,8 +220,12 @@ app.put('/api/posts/:id', checkAuth, async (req, res) => {
 // Немедленная публикация поста
 app.post('/api/posts/:id/publish', checkAuth, async (req, res) => {
   const { id } = req.params;
+  const postId = parseInt(id, 10);
+  if (!Number.isInteger(postId) || postId <= 0) {
+    return res.status(400).json({ error: `Невалидный id поста: "${id}". Возможно, пост не был сохранён перед публикацией.` });
+  }
   try {
-    const post = await db.get('SELECT * FROM posts WHERE id = ?', [id]);
+    const post = await db.get('SELECT * FROM posts WHERE id = ?', [postId]);
     if (!post) {
       return res.status(404).json({ error: 'Пост не найден' });
     }

@@ -76,24 +76,29 @@ function get(sql, params = []) {
 
 // Выполнение команды (INSERT, UPDATE, DELETE)
 function run(sql, params = []) {
-  const convertedSql = convertPlaceholders(sql);
-  
+  let convertedSql = convertPlaceholders(sql);
+
   if (isProd) {
+    // PostgreSQL не возвращает auto-generated id без RETURNING — иначе lastID будет null,
+    // а вызывающий код потом дёргает /api/posts/null/publish и ловит "invalid input syntax for type integer".
+    // Для INSERT'ов автоматически добавляем RETURNING id (если ещё не добавлено).
+    if (/^\s*INSERT\s+INTO/i.test(convertedSql) && !/\bRETURNING\b/i.test(convertedSql)) {
+      convertedSql += ' RETURNING id';
+    }
     return pgPool.query(convertedSql, params).then(res => {
-      // Имитируем SQLite `changes` и `lastID` для совместимости
       return {
         changes: res.rowCount,
-        lastID: res.rows[0] ? res.rows[0].id : null
+        lastID: res.rows && res.rows[0] ? res.rows[0].id : null
       };
     });
-  } else {
-    return new Promise((resolve, reject) => {
-      sqliteDb.run(convertedSql, params, function(err) {
-        if (err) reject(err);
-        else resolve({ changes: this.changes, lastID: this.lastID });
-      });
-    });
   }
+
+  return new Promise((resolve, reject) => {
+    sqliteDb.run(convertedSql, params, function(err) {
+      if (err) reject(err);
+      else resolve({ changes: this.changes, lastID: this.lastID });
+    });
+  });
 }
 
 // Создание таблиц (Инициализация)
