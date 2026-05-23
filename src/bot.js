@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const db = require('./db');
 const gemini = require('./gemini');
+const telegraph = require('./telegraph');
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -500,19 +501,58 @@ async function publishPost(post) {
     const mediaUrl = realMedia || fallbackImage;
     const hasMedia = !!mediaUrl;
 
-    // Единый отправщик: всегда ОДНО сообщение в канал — sendPhoto с полным текстом в caption.
-    // Telegram сам показывает компактную карточку (превью ~200 символов + "More") — тап разворачивает.
-    // Это естественный "карточка-разворот" формат топ-каналов.
-    // Длинные посты (>1024) умно обрезаются на границе абзаца/предложения с многоточием.
+    // Извлекаем "лид" — первый параграф после заголовка (или сам заголовок если лида нет)
+    // для краткой preview-карточки в канале.
+    const buildLead = () => {
+      const paragraphs = cleanContent.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+      // Пропускаем заголовок (первый параграф, если он короткий и в звёздочках)
+      let lead = paragraphs[0] || '';
+      if (paragraphs.length > 1 && /^\s*[^\s]*\s*\*[^*\n]+\*\s*$/.test(lead)) {
+        lead = paragraphs[1];
+      }
+      return lead.replace(/\*/g, '').replace(/_/g, '').slice(0, 250).trim();
+    };
+
+    // ОСНОВНОЙ путь: Telegraph-статья + sendMessage с URL → Telegram строит карточку.
+    // Тап на карточку → Instant View с полным текстом, лайки и комментарии на самом канал-посте.
+    try {
+      const article = await telegraph.createArticle({
+        title: post.title,
+        content: cleanContent,
+        imageUrl: realMedia || fallbackImage,
+        db
+      });
+
+      const lead = buildLead();
+      const messageText = `*${post.title}*\n\n${lead}\n\n[Читать полностью →](${article.url})`;
+
+      const resultMessage = await bot.sendMessage(channelId, messageText, {
+        parse_mode: 'Markdown',
+        // Превью включено по умолчанию — Telegram сам построит карточку из Telegraph URL.
+        link_preview_options: { is_disabled: false, prefer_large_media: true, show_above_text: true, url: article.url }
+      });
+
+      const tgMessageId = resultMessage.message_id;
+      console.log(`✅ Пост #${post.id} опубликован через Telegraph: ${article.url} (msg #${tgMessageId})`);
+
+      const now = new Date().toISOString();
+      await db.run(
+        'UPDATE posts SET status = ?, published_at = ?, telegram_message_id = ? WHERE id = ?',
+        ['published', now, tgMessageId, post.id]
+      );
+
+      return tgMessageId;
+    } catch (telegraphErr) {
+      console.warn(`⚠️ Telegraph не сработал (${telegraphErr.message}), фоллбэк на sendPhoto+caption`);
+    }
+
+    // ФОЛЛБЭК: если Telegraph недоступен — обычный sendPhoto с caption (старая логика).
     const sendWith = async (media, useMarkdown) => {
       const opts = useMarkdown ? { parse_mode: 'Markdown' } : {};
-
       if (media) {
         const caption = truncateToFit(formattedContent, CAPTION_LIMIT);
         return bot.sendPhoto(channelId, media, { caption, ...opts });
       }
-
-      // Только если медиа нет вообще — отправляем текстом.
       if (formattedContent.length <= TEXT_LIMIT) {
         return bot.sendMessage(channelId, formattedContent, opts);
       }
@@ -522,7 +562,6 @@ async function publishPost(post) {
     const isParseErr = (e) => /can't parse entities|Bad Request: can't parse/i.test(e.message);
     const isUrlErr = (e) => /failed to get HTTP URL content|wrong file identifier|PHOTO_INVALID|wrong type of the web page content|wrong remote file|webpage_curl_failed|wrong url/i.test(e.message);
 
-    // Каскад: реальная картинка → фоллбэк logo.png → text-only. На каждом уровне — Markdown, потом plain.
     const attempts = [];
     if (realMedia) {
       attempts.push({ media: realMedia, markdown: true });
@@ -540,11 +579,6 @@ async function publishPost(post) {
     for (const a of attempts) {
       try {
         resultMessage = await sendWith(a.media, a.markdown);
-        if (a.media === fallbackImage && realMedia) {
-          console.warn(`⚠️ Пост #${post.id}: оригинальный media_url не открылся, использован брендированный logo.png`);
-        } else if (!a.media && hasMedia) {
-          console.warn(`⚠️ Пост #${post.id}: все варианты картинки не сработали, опубликовано без изображения`);
-        }
         break;
       } catch (e) {
         lastErr = e;
