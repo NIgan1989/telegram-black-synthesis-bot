@@ -126,6 +126,14 @@ app.post('/api/auth', (req, res) => {
 // 2. Получение общей статистики
 app.get('/api/stats', checkAuth, async (req, res) => {
   try {
+    // Перед чтением — освежаем сегодняшний subscribers_count прямо из Telegram.
+    // Без этого карточка "Подписчики" застаивалась до следующего cron'а (раз в сутки на Hobby Vercel).
+    try {
+      await scheduler.updateDailyStats();
+    } catch (e) {
+      console.warn('⚠️ updateDailyStats failed (не критично):', e.message);
+    }
+
     // Последние 7 записей статистики подписчиков
     const statsData = await db.query('SELECT * FROM stats ORDER BY date DESC LIMIT 7');
 
