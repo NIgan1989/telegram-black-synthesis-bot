@@ -376,6 +376,26 @@ function renderPostsList(posts) {
       `;
     }
 
+    // Реакции под постом (если есть)
+    let reactionsHtml = '';
+    if (post.reactions) {
+      try {
+        const r = JSON.parse(post.reactions);
+        const entries = Object.entries(r).filter(([, n]) => Number(n) > 0);
+        if (entries.length) {
+          reactionsHtml = `<div class="post-reactions">${
+            entries
+              .sort((a, b) => Number(b[1]) - Number(a[1]))
+              .map(([emoji, count]) => {
+                const display = emoji.startsWith('custom:') ? '🎨' : emoji;
+                return `<span class="reaction-badge">${display} ${count}</span>`;
+              })
+              .join('')
+          }</div>`;
+        }
+      } catch (_) {}
+    }
+
     card.innerHTML = `
       <div class="post-card-header">
         <h3>${post.title}</h3>
@@ -383,6 +403,7 @@ function renderPostsList(posts) {
       </div>
       ${imageHtml}
       <div class="post-card-body">${post.content}</div>
+      ${reactionsHtml}
       <div class="post-card-actions">
         <span class="post-date">${formattedDate}</span>
         ${actionButtons}

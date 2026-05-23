@@ -95,6 +95,13 @@ function initBot() {
       catch (e) { console.error('❌ callback_query handler error:', e.message); }
     });
 
+    // Реакции (смайлы) на посте канала — Telegram шлёт агрегированные счётчики
+    // только если webhook подписан на 'message_reaction_count' в allowed_updates.
+    bot.on('message_reaction_count', async (event) => {
+      try { await handleReactionCount(event); }
+      catch (e) { console.error('❌ reaction_count handler error:', e.message); }
+    });
+
     bot.on('polling_error', (error) => {
       console.error('❌ Telegram Polling Error:', error.message);
     });
@@ -175,6 +182,42 @@ async function handleIncomingMessage(msg) {
   const fwdSrc = getForwardSource(msg);
   if (fwdSrc && isFromOurChannel(fwdSrc)) {
     await maybeDisableComments(msg);
+  }
+}
+
+// Обработка обновления счётчиков реакций (смайлов) под каналом-постом.
+// Telegram присылает суммарные счётчики каждой реакции при изменении.
+async function handleReactionCount(event) {
+  if (!event || !event.message_id || !event.chat) return;
+
+  // Игнорируем реакции в чатах, кроме нашего канала.
+  const fromOurChannel = String(event.chat.id) === String(channelId).replace('@', '') ||
+    String(event.chat.id) === String(channelId) ||
+    (event.chat.username && event.chat.username === String(channelId).replace('@', ''));
+  if (!fromOurChannel) return;
+
+  // Преобразуем массив реакций Telegram в карту {emoji: total_count}.
+  const counts = {};
+  for (const r of (event.reactions || [])) {
+    if (!r || !r.type) continue;
+    let key;
+    if (r.type.type === 'emoji') key = r.type.emoji;
+    else if (r.type.type === 'custom_emoji') key = `custom:${r.type.custom_emoji_id}`;
+    else if (r.type.type === 'paid') key = '⭐';
+    if (key) counts[key] = r.total_count;
+  }
+
+  try {
+    const post = await db.get('SELECT id FROM posts WHERE telegram_message_id = ? LIMIT 1', [event.message_id]);
+    if (!post) {
+      console.log(`ℹ️ Реакция на неизвестный msg #${event.message_id} — пропускаем`);
+      return;
+    }
+    await db.run('UPDATE posts SET reactions = ? WHERE id = ?', [JSON.stringify(counts), post.id]);
+    const summary = Object.entries(counts).map(([e, n]) => `${e}×${n}`).join(' ') || '(пусто)';
+    console.log(`👍 Реакции поста #${post.id}: ${summary}`);
+  } catch (err) {
+    console.error('❌ Ошибка обновления реакций в БД:', err.message);
   }
 }
 

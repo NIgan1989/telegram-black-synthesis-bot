@@ -124,7 +124,8 @@ async function init() {
       views INTEGER DEFAULT 0,
       telegram_message_id BIGINT,
       telegraph_url TEXT,
-      telegraph_path TEXT
+      telegraph_path TEXT,
+      reactions TEXT
     );
   ` : `
     CREATE TABLE IF NOT EXISTS posts (
@@ -139,7 +140,8 @@ async function init() {
       views INTEGER DEFAULT 0,
       telegram_message_id INTEGER,
       telegraph_url TEXT,
-      telegraph_path TEXT
+      telegraph_path TEXT,
+      reactions TEXT
     );
   `;
 
@@ -220,6 +222,7 @@ async function init() {
     await run(settingsSchema);
     await migrateAddTelegramMessageId();
     await migrateAddTelegraphColumns();
+    await migrateAddReactions();
     console.log('✅ DB: Все таблицы успешно инициализированы.');
 
     if (process.env.DEMO_MODE === 'true') {
@@ -257,6 +260,16 @@ async function migrateAddTelegraphColumns() {
     try { await run(sql); }
     catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
   }
+}
+
+// Колонка reactions хранит JSON-карту {emoji: count} полученных от Telegram через
+// message_reaction_count webhook'и. Обновляется live, отображается в админке.
+async function migrateAddReactions() {
+  const sql = isProd
+    ? 'ALTER TABLE posts ADD COLUMN IF NOT EXISTS reactions TEXT'
+    : 'ALTER TABLE posts ADD COLUMN reactions TEXT';
+  try { await run(sql); }
+  catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
 }
 
 async function seedDemoData() {

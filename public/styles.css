@@ -952,6 +952,24 @@ input:checked + .slider:before {
   padding: 20px;
 }
 
+.post-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0 0;
+}
+.reaction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  background: rgba(127, 90, 240, 0.12);
+  border: 1px solid rgba(127, 90, 240, 0.25);
+  border-radius: 14px;
+  white-space: nowrap;
+}
+
 .ai-improve-box {
   background: rgba(127, 90, 240, 0.08);
   border: 1px solid rgba(127, 90, 240, 0.25);
