@@ -480,15 +480,14 @@ async function publishPost(post) {
     //  • фото + короткий текст → одно sendPhoto с caption (как было);
     //  • фото + длинный текст  → sendPhoto с заголовком в caption, затем sendMessage с телом;
     //  • без фото + любой текст → sendMessage, при длине > 4096 разбиваем на части.
-    const send = async (useMarkdown) => {
+    const send = async (useMarkdown, useMedia = true) => {
       const opts = useMarkdown ? { parse_mode: 'Markdown' } : {};
       const title = useMarkdown ? `*${post.title}*` : post.title;
 
-      if (hasMedia) {
+      if (hasMedia && useMedia) {
         if (formattedContent.length <= CAPTION_LIMIT) {
           return bot.sendPhoto(channelId, post.media_url, { caption: formattedContent, ...opts });
         }
-        // Слишком длинно для caption — отправляем фото с заголовком, затем тело отдельным сообщением.
         const captionFits = title.length <= CAPTION_LIMIT;
         const photoMsg = captionFits
           ? await bot.sendPhoto(channelId, post.media_url, { caption: title, ...opts })
@@ -505,11 +504,22 @@ async function publishPost(post) {
 
     let resultMessage;
     try {
-      resultMessage = await send(true);
+      resultMessage = await send(true, true);
     } catch (e) {
       if (/can't parse entities|Bad Request: can't parse/i.test(e.message)) {
         console.warn(`⚠️ Markdown поста #${post.id} не распознан, публикую без форматирования.`);
-        resultMessage = await send(false);
+        resultMessage = await send(false, true);
+      } else if (hasMedia && /failed to get HTTP URL content|wrong file identifier|PHOTO_INVALID|wrong type of the web page content|wrong remote file|webpage_curl_failed|wrong url/i.test(e.message)) {
+        console.warn(`⚠️ Media URL поста #${post.id} не открывается (${e.message}). Публикую без изображения.`);
+        try {
+          resultMessage = await send(true, false);
+        } catch (e2) {
+          if (/can't parse entities|Bad Request: can't parse/i.test(e2.message)) {
+            resultMessage = await send(false, false);
+          } else {
+            throw e2;
+          }
+        }
       } else {
         throw e;
       }
