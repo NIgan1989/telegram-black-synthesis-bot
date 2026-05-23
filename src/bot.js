@@ -249,6 +249,8 @@ async function handleCommand(msg, text) {
 
   switch (command) {
     case '/start':
+      // Deeplink-параметр (например /start order) — переход с кнопки в канале на заказ рекламы.
+      if (argText === 'order') return sendOrderMessage(chatId, msg.from, isAdmin);
       return sendStartMessage(chatId, isAdmin);
     case '/about':
       return sendAboutMessage(chatId, isAdmin);
@@ -894,8 +896,15 @@ async function pinAdAnnouncement() {
 
 Заявку оставь через кнопку ниже или напиши админу.`;
 
+  // ВАЖНО: в каналах кнопки web_app в inline-клавиатуре запрещены (BUTTON_TYPE_INVALID).
+  // Используем URL-кнопку на deeplink к боту с параметром start=order — бот при /start order
+  // покажет тот же сценарий заявки с web_app формой (там уже личка, web_app работает).
   const buttons = [];
-  if (webAppUrl) buttons.push([{ text: '📝 Оставить заявку', web_app: { url: `${webAppUrl}/order.html` } }]);
+  if (bot && bot.options && bot.me && bot.me.username) {
+    // на всякий случай не используется — короче через env
+  }
+  const botUsername = (process.env.TELEGRAM_BOT_USERNAME || 'black_synthesis_bot').replace(/^@/, '');
+  buttons.push([{ text: '📝 Оставить заявку', url: `https://t.me/${botUsername}?start=order` }]);
   if (adminContact) buttons.push([{ text: '💬 Связаться с админом', url: adminContact }]);
 
   // Открепляем старую плашку если есть
