@@ -455,7 +455,18 @@ app.post('/api/posts/generate', checkAuth, async (req, res) => {
     const generated = await gemini.generatePostFromPrompt(prompt.trim(), {
       withChannelStyle: withChannelStyle !== false
     });
-    res.json({ success: true, ...generated });
+    const response = { success: true, title: generated.title, content: generated.content };
+    if (generated._mock) {
+      response.warning = (() => {
+        switch (generated._reason) {
+          case 'no_api_key': return 'GEMINI_API_KEY не задан в Vercel env vars (Production). Возвращён заглушечный mock.';
+          case 'demo_mode_on': return 'DEMO_MODE=true в env vars. Реальный Gemini отключён, возвращён mock.';
+          case 'gemini_api_error': return `Gemini API вернул ошибку: ${generated._error || 'unknown'}. Возможно, неверный ключ или превышена квота.`;
+          default: return 'Получен mock-контент. Проверь GEMINI_API_KEY и DEMO_MODE в Vercel.';
+        }
+      })();
+    }
+    res.json(response);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

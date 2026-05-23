@@ -884,6 +884,13 @@ function initAiPromptModal() {
       titleInput.value = data.title || '';
       contentInput.value = data.content || '';
       showStage('result');
+      if (data.warning) {
+        tg.showPopup({
+          title: '⚠️ Mock-контент',
+          message: data.warning + '\n\nЭто заглушка, не настоящая Gemini-генерация. Проверь env vars в Vercel.',
+          buttons: [{ type: 'ok' }]
+        });
+      }
     } catch (e) {
       tg.showPopup({ title: 'Ошибка', message: e.message, buttons: [{ type: 'close' }] });
     } finally {

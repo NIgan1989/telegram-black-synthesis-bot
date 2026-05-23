@@ -89,11 +89,17 @@ async function runNewsAggregation() {
       ];
       const mediaUrl = mockPhotos[Math.floor(Math.random() * mockPhotos.length)];
 
+      const sourceDomain = (() => {
+        try { return new URL(article.link).hostname.replace(/^www\./, ''); }
+        catch { return 'источник'; }
+      })();
+      const sourceLink = `\n\n🔗 [${sourceDomain}](${article.link})`;
+
       const result = await db.run(insertQuery, [
-        generated.title, 
-        generated.content + `\n\n🔗 Источник: ${article.link}`, 
-        mediaUrl, 
-        status, 
+        generated.title,
+        generated.content + sourceLink,
+        mediaUrl,
+        status,
         scheduledAt
       ]);
 

@@ -473,25 +473,38 @@ async function publishPost(post) {
     // Telegram лимиты: caption у sendPhoto = 1024 символа, текст у sendMessage = 4096.
     const CAPTION_LIMIT = 1024;
     const TEXT_LIMIT = 4096;
-    const formattedContent = `*${post.title}*\n\n${post.content}`;
-    const hasMedia = post.media_url && post.media_url.trim().startsWith('http');
 
-    // Стратегия отправки одного поста с учётом лимитов:
-    //  • фото + короткий текст → одно sendPhoto с caption (как было);
-    //  • фото + длинный текст  → sendPhoto с заголовком в caption, затем sendMessage с телом;
-    //  • без фото + любой текст → sendMessage, при длине > 4096 разбиваем на части.
-    const send = async (useMarkdown, useMedia = true) => {
+    // Заголовок пост-контента: если в content уже есть жирный заголовок первой строкой
+    // (новый формат от Gemini), не дублируем; иначе оборачиваем post.title в *...*.
+    const contentStartsWithTitle = /^\s*[🏭📊⚙️💡🔬🛢️📈🌍🔥]?\s*\*[^*\n]+\*/.test(post.content || '');
+    const formattedContent = contentStartsWithTitle
+      ? post.content
+      : `*${post.title}*\n\n${post.content}`;
+
+    // Картинка обязательна: используем post.media_url, если есть валидный URL.
+    // Иначе — фоллбэк на брендированную logo.png с того же Vercel-домена (стабильно доступна).
+    const fallbackImage = process.env.WEBAPP_URL
+      ? `${process.env.WEBAPP_URL.replace(/\/$/, '')}/logo.png`
+      : null;
+    const realMedia = post.media_url && post.media_url.trim().startsWith('http')
+      ? post.media_url.trim()
+      : null;
+    const mediaUrl = realMedia || fallbackImage;
+    const hasMedia = !!mediaUrl;
+
+    // Единый отправщик: либо фото + текст в caption/отдельным сообщением, либо чистый текст.
+    const sendWith = async (media, useMarkdown) => {
       const opts = useMarkdown ? { parse_mode: 'Markdown' } : {};
       const title = useMarkdown ? `*${post.title}*` : post.title;
 
-      if (hasMedia && useMedia) {
+      if (media) {
         if (formattedContent.length <= CAPTION_LIMIT) {
-          return bot.sendPhoto(channelId, post.media_url, { caption: formattedContent, ...opts });
+          return bot.sendPhoto(channelId, media, { caption: formattedContent, ...opts });
         }
         const captionFits = title.length <= CAPTION_LIMIT;
         const photoMsg = captionFits
-          ? await bot.sendPhoto(channelId, post.media_url, { caption: title, ...opts })
-          : await bot.sendPhoto(channelId, post.media_url);
+          ? await bot.sendPhoto(channelId, media, { caption: title, ...opts })
+          : await bot.sendPhoto(channelId, media);
         await sendLongText(post.content, opts, TEXT_LIMIT);
         return photoMsg;
       }
@@ -502,28 +515,40 @@ async function publishPost(post) {
       return sendLongText(formattedContent, opts, TEXT_LIMIT);
     };
 
-    let resultMessage;
-    try {
-      resultMessage = await send(true, true);
-    } catch (e) {
-      if (/can't parse entities|Bad Request: can't parse/i.test(e.message)) {
-        console.warn(`⚠️ Markdown поста #${post.id} не распознан, публикую без форматирования.`);
-        resultMessage = await send(false, true);
-      } else if (hasMedia && /failed to get HTTP URL content|wrong file identifier|PHOTO_INVALID|wrong type of the web page content|wrong remote file|webpage_curl_failed|wrong url/i.test(e.message)) {
-        console.warn(`⚠️ Media URL поста #${post.id} не открывается (${e.message}). Публикую без изображения.`);
-        try {
-          resultMessage = await send(true, false);
-        } catch (e2) {
-          if (/can't parse entities|Bad Request: can't parse/i.test(e2.message)) {
-            resultMessage = await send(false, false);
-          } else {
-            throw e2;
-          }
+    const isParseErr = (e) => /can't parse entities|Bad Request: can't parse/i.test(e.message);
+    const isUrlErr = (e) => /failed to get HTTP URL content|wrong file identifier|PHOTO_INVALID|wrong type of the web page content|wrong remote file|webpage_curl_failed|wrong url/i.test(e.message);
+
+    // Каскад: реальная картинка → фоллбэк logo.png → text-only. На каждом уровне — Markdown, потом plain.
+    const attempts = [];
+    if (realMedia) {
+      attempts.push({ media: realMedia, markdown: true });
+      attempts.push({ media: realMedia, markdown: false });
+    }
+    if (fallbackImage && fallbackImage !== realMedia) {
+      attempts.push({ media: fallbackImage, markdown: true });
+      attempts.push({ media: fallbackImage, markdown: false });
+    }
+    attempts.push({ media: null, markdown: true });
+    attempts.push({ media: null, markdown: false });
+
+    let resultMessage = null;
+    let lastErr = null;
+    for (const a of attempts) {
+      try {
+        resultMessage = await sendWith(a.media, a.markdown);
+        if (a.media === fallbackImage && realMedia) {
+          console.warn(`⚠️ Пост #${post.id}: оригинальный media_url не открылся, использован брендированный logo.png`);
+        } else if (!a.media && hasMedia) {
+          console.warn(`⚠️ Пост #${post.id}: все варианты картинки не сработали, опубликовано без изображения`);
         }
-      } else {
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (isParseErr(e) || isUrlErr(e)) continue;
         throw e;
       }
     }
+    if (!resultMessage) throw lastErr || new Error('Не удалось опубликовать пост ни в одном варианте');
 
     const tgMessageId = resultMessage.message_id;
     console.log(`✅ Пост #${post.id} успешно опубликован в Telegram. Message ID: ${tgMessageId}`);
