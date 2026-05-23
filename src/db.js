@@ -207,12 +207,12 @@ async function init() {
     await migrateAddTelegramMessageId();
     console.log('✅ DB: Все таблицы успешно инициализированы.');
 
-    // Автоматическое заполнение демо-данными при первом запуске
     if (process.env.DEMO_MODE === 'true') {
       await seedDemoData();
     }
   } catch (err) {
     console.error('❌ DB: Ошибка инициализации таблиц базы данных:', err.message);
+    throw new Error(`DB init failed: ${err.message}`);
   }
 }
 
