@@ -27,6 +27,31 @@ function getAdminContactUrl() {
   return '';
 }
 
+// Главное меню — постоянная reply-клавиатура внизу чата
+function getMainKeyboard(isAdmin) {
+  const keyboard = [
+    [{ text: '📢 О канале' }, { text: '💼 Заказать рекламу' }],
+    [{ text: '❓ Помощь' }]
+  ];
+  if (isAdmin) {
+    keyboard.splice(1, 0, [{ text: '📊 Статистика' }, { text: '🛠 Админка' }]);
+  }
+  return {
+    keyboard,
+    resize_keyboard: true,
+    is_persistent: true
+  };
+}
+
+// Маппинг текста кнопок reply-клавиатуры на команды
+const BUTTON_TO_COMMAND = {
+  '📢 О канале': '/about',
+  '💼 Заказать рекламу': '/order',
+  '❓ Помощь': '/help',
+  '📊 Статистика': '/stats',
+  '🛠 Админка': '/admin'
+};
+
 // Инициализация бота
 function initBot() {
   if (isDemo) {
@@ -106,10 +131,15 @@ async function registerBotCommands() {
   }
 }
 
-// Маршрутизация входящих сообщений: команды vs комментарии
+// Маршрутизация входящих сообщений: команды, кнопки меню или комментарии
 async function handleIncomingMessage(msg) {
   const text = msg.text || msg.caption;
   if (!text) return;
+
+  // Текстовые кнопки reply-клавиатуры → перенаправляем на соответствующую команду
+  if (BUTTON_TO_COMMAND[text]) {
+    return handleCommand(msg, BUTTON_TO_COMMAND[text]);
+  }
 
   if (text.startsWith('/')) {
     await handleCommand(msg, text);
@@ -138,17 +168,17 @@ async function handleCommand(msg, text) {
     case '/start':
       return sendStartMessage(chatId, isAdmin);
     case '/about':
-      return sendAboutMessage(chatId);
+      return sendAboutMessage(chatId, isAdmin);
     case '/help':
       return sendHelpMessage(chatId, isAdmin);
     case '/order':
-      return sendOrderMessage(chatId, msg.from);
+      return sendOrderMessage(chatId, msg.from, isAdmin);
     case '/admin':
       if (!isAdmin) return safeSend(chatId, '⛔ Команда доступна только администратору канала.');
       return sendAdminMessage(chatId);
     case '/stats':
       if (!isAdmin) return safeSend(chatId, '⛔ Команда доступна только администратору канала.');
-      return sendStatsMessage(chatId);
+      return sendStatsMessage(chatId, isAdmin);
     default:
       if (isPrivate) {
         return safeSend(chatId, `Неизвестная команда ${command}. Используй /help для списка команд.`);
@@ -165,9 +195,9 @@ async function handleCallbackQuery(cbq) {
 
   const isAdmin = adminTelegramId && cbq.from && String(cbq.from.id) === String(adminTelegramId);
 
-  if (data === 'order') return sendOrderMessage(chatId, cbq.from);
+  if (data === 'order') return sendOrderMessage(chatId, cbq.from, isAdmin);
   if (data === 'help') return sendHelpMessage(chatId, isAdmin);
-  if (data === 'about') return sendAboutMessage(chatId);
+  if (data === 'about') return sendAboutMessage(chatId, isAdmin);
 }
 
 // Безопасная отправка с фоллбэком на plain text если Markdown не парсится
@@ -189,9 +219,19 @@ async function safeSend(chatId, text, options = {}) {
 // Тексты команд
 async function sendStartMessage(chatId, isAdmin) {
   const channelUrl = getChannelUrl();
+  const channelLine = channelUrl
+    ? `📢 Канал: [${channelId}](${channelUrl})`
+    : `📢 Канал: ${channelId || ''}`;
+
+  const adminHint = isAdmin && webAppUrl
+    ? `\n\n🛠 У тебя есть кнопка *Админка* в меню внизу и команда /admin для открытия Mini App.`
+    : '';
+
   const text = `👋 *Добро пожаловать!*
 
 *Чёрный Синтез* — аналитический канал о химической и нефтехимической промышленности Казахстана и стран СНГ.
+
+${channelLine}
 
 📊 *Здесь:*
 • Анализ ключевых событий отрасли
@@ -199,25 +239,15 @@ async function sendStartMessage(chatId, isAdmin) {
 • Обзоры рынка полимеров и удобрений
 • Новости заводов и кластеров
 
-Подпишись и поделись с коллегами.`;
-
-  const buttons = [];
-  if (channelUrl) buttons.push([{ text: '📢 Открыть канал', url: channelUrl }]);
-  buttons.push([
-    { text: '📝 Заказать рекламу', callback_data: 'order' },
-    { text: '❓ Помощь', callback_data: 'help' }
-  ]);
-  if (isAdmin && webAppUrl) {
-    buttons.push([{ text: '🛠 Открыть админку', web_app: { url: webAppUrl } }]);
-  }
+Используй кнопки внизу — меню закреплено в этом чате.${adminHint}`;
 
   return safeSend(chatId, text, {
     parse_mode: 'Markdown',
-    reply_markup: { inline_keyboard: buttons }
+    reply_markup: getMainKeyboard(isAdmin)
   });
 }
 
-async function sendAboutMessage(chatId) {
+async function sendAboutMessage(chatId, isAdmin) {
   const text = `🏭 *О канале «Чёрный Синтез»*
 
 Канал ведёт отраслевая команда аналитиков. Здесь публикуются:
@@ -232,7 +262,10 @@ async function sendAboutMessage(chatId) {
 
 📩 Для сотрудничества и рекламы — команда /order.`;
 
-  return safeSend(chatId, text, { parse_mode: 'Markdown' });
+  return safeSend(chatId, text, {
+    parse_mode: 'Markdown',
+    reply_markup: getMainKeyboard(isAdmin)
+  });
 }
 
 async function sendHelpMessage(chatId, isAdmin) {
@@ -247,10 +280,14 @@ async function sendHelpMessage(chatId, isAdmin) {
   if (isAdmin) {
     lines.push('', '🛠 *Для администратора:*', '/admin — открыть админ-панель', '/stats — быстрая статистика');
   }
-  return safeSend(chatId, lines.join('\n'), { parse_mode: 'Markdown' });
+  lines.push('', '_Внизу чата закреплено меню с кнопками._');
+  return safeSend(chatId, lines.join('\n'), {
+    parse_mode: 'Markdown',
+    reply_markup: getMainKeyboard(isAdmin)
+  });
 }
 
-async function sendOrderMessage(chatId, fromUser) {
+async function sendOrderMessage(chatId, fromUser, isAdmin) {
   const text = `📢 *Реклама в канале «Чёрный Синтез»*
 
 Канал читают специалисты химической и нефтехимической отрасли Казахстана и СНГ. Здесь покупают рекламу:
@@ -302,7 +339,7 @@ async function sendAdminMessage(chatId) {
   });
 }
 
-async function sendStatsMessage(chatId) {
+async function sendStatsMessage(chatId, isAdmin) {
   try {
     const subs = await getSubscriberCount().catch(() => 0);
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
@@ -330,7 +367,10 @@ async function sendStatsMessage(chatId) {
 ✅ Активных заказов: *${paidOrders ? paidOrders.count : 0}*
 💰 Заработано: *${totalRevenue ? Number(totalRevenue.total).toLocaleString('ru-RU') : 0} ₸*`;
 
-    return safeSend(chatId, text, { parse_mode: 'Markdown' });
+    return safeSend(chatId, text, {
+      parse_mode: 'Markdown',
+      reply_markup: getMainKeyboard(isAdmin)
+    });
   } catch (e) {
     return safeSend(chatId, '⚠️ Ошибка получения статистики: ' + e.message);
   }
