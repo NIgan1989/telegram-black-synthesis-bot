@@ -172,12 +172,9 @@ async function handleIncomingMessage(msg) {
     return;
   }
 
-  if (msg.forward_from_chat) {
-    const isFromChannel = String(msg.forward_from_chat.id) === String(channelId) ||
-      msg.forward_from_chat.username === String(channelId).replace('@', '');
-    if (isFromChannel) {
-      await maybeDisableComments(msg);
-    }
+  const fwdSrc = getForwardSource(msg);
+  if (fwdSrc && isFromOurChannel(fwdSrc)) {
+    await maybeDisableComments(msg);
   }
 }
 
@@ -426,17 +423,33 @@ async function sendStatsMessage(chatId, isAdmin) {
   }
 }
 
+// Извлекаем chat origin из msg — поддерживаем и старое forward_from_chat и новое forward_origin.
+function getForwardSource(msg) {
+  if (!msg) return null;
+  if (msg.forward_from_chat) {
+    return { chatId: msg.forward_from_chat.id, username: msg.forward_from_chat.username, messageId: msg.forward_from_message_id };
+  }
+  if (msg.forward_origin && msg.forward_origin.chat) {
+    return { chatId: msg.forward_origin.chat.id, username: msg.forward_origin.chat.username, messageId: msg.forward_origin.message_id };
+  }
+  return null;
+}
+
+function isFromOurChannel(src) {
+  if (!src) return false;
+  const channelIdStr = String(channelId || '').replace('@', '');
+  return String(src.chatId) === channelIdStr ||
+    (src.username && src.username === channelIdStr);
+}
+
 // Существующая логика — отслеживание комментариев в группе обсуждения
 async function handleGroupComment(msg) {
   const replyTo = msg.reply_to_message;
+  const src = getForwardSource(replyTo);
 
-  const isFromChannel = replyTo.forward_from_chat &&
-    (String(replyTo.forward_from_chat.id) === String(channelId) ||
-     replyTo.forward_from_chat.username === String(channelId).replace('@', ''));
+  if (!isFromOurChannel(src)) return;
 
-  if (!isFromChannel) return;
-
-  const channelPostId = replyTo.forward_from_message_id;
+  const channelPostId = src.messageId;
   const username = msg.from.username ? `@${msg.from.username}` : `${msg.from.first_name} ${msg.from.last_name || ''}`.trim();
   const commentText = msg.text;
   const tgMsgId = msg.message_id;

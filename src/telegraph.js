@@ -152,13 +152,56 @@ function markdownToNodes(text) {
   return nodes;
 }
 
-// Собирает body статьи: фото, основной markdown, подпись.
-function buildContentNodes({ title, content, imageUrl }) {
-  const nodes = [];
-  if (imageUrl && /^https?:\/\//.test(imageUrl)) {
-    nodes.push({ tag: 'figure', children: [{ tag: 'img', attrs: { src: imageUrl } }] });
+// Загружает картинку с произвольного URL в Telegraph и возвращает уже telegra.ph-хостинговый URL.
+// Это надёжнее чем вставлять внешние ссылки — внешние Telegraph часто не отдаёт в Instant View
+// (отсюда "Ошибка в превью" внизу статьи).
+async function uploadImageToTelegraph(externalUrl) {
+  if (!externalUrl || !/^https?:\/\//.test(externalUrl)) return null;
+
+  // Сначала скачиваем картинку
+  const imgRes = await fetch(externalUrl);
+  if (!imgRes.ok) {
+    throw new Error(`Не удалось скачать картинку (${imgRes.status})`);
   }
-  nodes.push(...markdownToNodes(content || ''));
+  const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+  const buffer = Buffer.from(await imgRes.arrayBuffer());
+
+  // Native FormData/Blob в Node 18+
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: contentType }), 'image.jpg');
+
+  const upRes = await fetch('https://telegra.ph/upload', { method: 'POST', body: form });
+  if (!upRes.ok) {
+    throw new Error(`Telegraph upload HTTP ${upRes.status}`);
+  }
+  const data = await upRes.json();
+  if (Array.isArray(data) && data[0] && data[0].src) {
+    return `https://telegra.ph${data[0].src}`;
+  }
+  throw new Error(`Telegraph upload неожиданный ответ: ${JSON.stringify(data).slice(0, 200)}`);
+}
+
+// Собирает body статьи: фото (загруженное в Telegraph), основной markdown, подпись.
+async function buildContentNodes({ title, content, imageUrl }) {
+  const nodes = [];
+
+  // Пробуем загрузить картинку в Telegraph для надёжности.
+  if (imageUrl && /^https?:\/\//.test(imageUrl)) {
+    let hostedUrl = null;
+    try {
+      hostedUrl = await uploadImageToTelegraph(imageUrl);
+    } catch (e) {
+      console.warn(`⚠️ Не удалось загрузить картинку в Telegraph (${e.message}). Использую внешний URL как есть.`);
+    }
+    nodes.push({ tag: 'figure', children: [{ tag: 'img', attrs: { src: hostedUrl || imageUrl } }] });
+  }
+
+  // Удаляем из контента ссылку на источник в формате [domain](url) и одиночные [text](http...) ссылки на новостные домены,
+  // чтобы Telegraph не пытался сгенерить broken-preview для news.google.com и подобных.
+  const cleanedContent = (content || '').replace(/\n*🔗\s*\[[^\]]+\]\(https?:\/\/[^)]+\)\s*\n*/g, '\n').trim();
+
+  nodes.push(...markdownToNodes(cleanedContent));
+
   nodes.push({
     tag: 'p',
     children: [
@@ -181,7 +224,7 @@ async function createArticle({ title, content, imageUrl, db }) {
     title: cleanupTitle(title),
     author_name: 'Чёрный Синтез',
     author_url: 'https://t.me/black_synthesis',
-    content: buildContentNodes({ title, content, imageUrl }),
+    content: await buildContentNodes({ title, content, imageUrl }),
     return_content: false
   });
   return result;
@@ -198,7 +241,7 @@ async function editArticle({ path, title, content, imageUrl, db }) {
     title: cleanupTitle(title),
     author_name: 'Чёрный Синтез',
     author_url: 'https://t.me/black_synthesis',
-    content: buildContentNodes({ title, content, imageUrl }),
+    content: await buildContentNodes({ title, content, imageUrl }),
     return_content: false
   });
   return result;
