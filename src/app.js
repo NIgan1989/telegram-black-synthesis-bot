@@ -104,11 +104,22 @@ app.post('/api/auth', (req, res) => {
     return res.json({ success: true, user: { username: 'test_admin', role: 'Владелец (Без токена)' } });
   }
 
+  // Открыто вне контекста Telegram WebApp (нет initData, или userId — заглушка фронта).
+  if (!initDataRaw || !userId || userId === 'demo_id') {
+    return res.status(403).json({
+      error: 'Админка должна открываться через Telegram',
+      hint: 'Открой @black_synthesis_bot → команда /admin → нажми "Открыть админку". Прямая ссылка в браузере не сработает — там нет Telegram WebApp initData.'
+    });
+  }
+
   if (String(userId) === String(adminId)) {
     return res.json({ success: true, user: { id: userId, role: 'Владелец' } });
   }
 
-  return res.status(403).json({ error: 'У вас нет доступа к этой админ-панели' });
+  return res.status(403).json({
+    error: 'У этого аккаунта нет доступа к админ-панели',
+    hint: `Войди под Telegram-аккаунтом с ID ${adminId} (видишь свой ID через @userinfobot). Получено ID: ${userId}.`
+  });
 });
 
 // 2. Получение общей статистики

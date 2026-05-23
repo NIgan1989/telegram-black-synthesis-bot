@@ -80,7 +80,8 @@ async function authenticateUser(tgUser, initDataRaw) {
       return true;
     } else {
       const errData = await response.json();
-      showAccessDenied(errData.error || 'Доступ запрещен');
+      const fullMsg = (errData.error || 'Доступ запрещен') + (errData.hint ? `\n\n💡 ${errData.hint}` : '');
+      showAccessDenied(fullMsg);
       return false;
     }
   } catch (err) {
