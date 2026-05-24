@@ -540,9 +540,17 @@ function buildLead(cleanContent) {
 // Текст сообщения в канале для постов, опубликованных через Telegraph.
 // Используется и при первой публикации, и при последующих правках,
 // чтобы формат сообщения оставался "карточка с превью + лид + ссылка".
+// Возвращает HTML (parse_mode='HTML').
 function buildTelegraphMessageText(title, cleanContent, telegraphUrl) {
   const lead = buildLead(cleanContent);
-  return `*${title}*\n\n${lead}\n\n[Читать полностью →](${telegraphUrl})`;
+  const titleHtml = `<b>${escapeHtmlBasic(title)}</b>`;
+  const leadHtml = gemini.richToHtml(lead);
+  const linkHtml = `<a href="${telegraphUrl.replace(/"/g, '&quot;')}">Читать полностью →</a>`;
+  return `${titleHtml}\n\n${leadHtml}\n\n${linkHtml}`;
+}
+
+function escapeHtmlBasic(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // Публикация поста в канал
@@ -621,7 +629,7 @@ async function publishPost(post) {
       const messageText = buildTelegraphMessageText(post.title, cleanContent, article.url);
 
       const resultMessage = await bot.sendMessage(channelId, messageText, {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         // Превью включено по умолчанию — Telegram сам построит карточку из Telegraph URL.
         link_preview_options: { is_disabled: false, prefer_large_media: true, show_above_text: true, url: article.url }
       });
@@ -747,13 +755,14 @@ async function editPublishedPost(post) {
     const contentStartsWithTitle = firstLineNorm && titleNorm &&
       (firstLineNorm === titleNorm || firstLineNorm.startsWith(titleNorm.slice(0, 24)));
     const formatted = contentStartsWithTitle ? cleanContent : `*${post.title}*\n\n${cleanContent}`;
-    newText = truncateToFit(formatted, 1024);
+    // Конвертируем расширенный Markdown в HTML для parse_mode='HTML'
+    newText = gemini.richToHtml(truncateToFit(formatted, 1024));
   }
 
   const baseOpts = {
     chat_id: channelId,
     message_id: post.telegram_message_id,
-    parse_mode: 'Markdown'
+    parse_mode: 'HTML'
   };
   // Для Telegraph-карточек обязательно подтягиваем тот же link_preview, что был при публикации,
   // иначе editMessageText может выйти без превью.
