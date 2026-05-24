@@ -718,17 +718,32 @@ function initEventHandlers() {
         method: 'POST',
         headers: getHeaders()
       });
-      
-      if (res.ok) {
-        const data = await res.json();
-        safePopup('Успешно', `Сбор завершен! Создано новых черновиков: ${data.createdCount}`);
-        await loadPosts();
+
+      if (!res.ok) throw new Error('Ошибка вызова API');
+      const d = await res.json();
+
+      let summary;
+      if (d.createdCount > 0) {
+        summary = `Создано постов: ${d.createdCount} (статус: ${d.autoPost ? 'scheduled' : 'draft'})`;
+      } else if (d.totalArticles === 0) {
+        summary = 'Источники новостей не вернули ни одной статьи. Проверь Vercel логи /api/cron.';
+      } else if (d.skippedDuplicates === d.totalArticles) {
+        summary = `Все ${d.totalArticles} найденных новостей уже в БД (дубликаты). Свежих нет.`;
+      } else if (d.errors && d.errors.length > 0) {
+        summary = `Найдено ${d.totalArticles}, ошибок ${d.errors.length}. Первая: ${d.errors[0].slice(0, 100)}`;
       } else {
-        throw new Error('Ошибка вызова API');
+        summary = `Найдено ${d.totalArticles}, пропущено дубликатов ${d.skippedDuplicates}.`;
       }
+
+      const autoHint = d.autoPost
+        ? ' ✅ Автопостинг включён — посты публикуются автоматически.'
+        : ' ⚠️ Автопостинг ВЫКЛ — посты создаются как черновики. Включи в Настройках если хочешь auto-publish.';
+
+      safePopup(d.createdCount > 0 ? 'Готово' : 'Завершено', summary + autoHint);
+      await loadPosts();
     } catch (e) {
       console.error(e);
-      safePopup('Ошибка', 'Не удалось запустить сбор новостей.');
+      safePopup('Ошибка', e.message || 'Не удалось запустить сбор новостей.');
     } finally {
       triggerBtn.disabled = false;
       triggerBtn.innerHTML = originalHtml;

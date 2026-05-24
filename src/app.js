@@ -746,8 +746,13 @@ app.post('/api/channel/unpin-ad', checkAuth, async (req, res) => {
 app.post('/api/cron-trigger', checkAuth, async (req, res) => {
   console.log('⚡ Ручной запуск агрегации новостей из админки...');
   try {
-    const createdCount = await scheduler.runNewsAggregation();
-    res.json({ success: true, createdCount });
+    const diag = await scheduler.runNewsAggregation();
+    // Бэк может вернуть либо число (старый формат), либо объект (новый).
+    if (typeof diag === 'number') {
+      res.json({ success: true, createdCount: diag });
+    } else {
+      res.json({ success: true, ...diag });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

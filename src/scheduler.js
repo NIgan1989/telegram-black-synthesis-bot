@@ -30,59 +30,76 @@ function startScheduler() {
   });
 }
 
-// Сбор новостей и генерация постов
+// Сбор новостей и генерация постов. Возвращает диагностический объект:
+// { createdCount, totalArticles, skippedDuplicates, errors, autoPost }
 async function runNewsAggregation() {
   console.log('🚀 Агрегатор: Старт сбора новостей...');
-  
+
+  const diag = {
+    createdCount: 0,
+    totalArticles: 0,
+    skippedDuplicates: 0,
+    errors: [],
+    autoPost: false,
+    sources: []
+  };
+
   // 1. Получаем свежие новости
-  const latestArticles = await news.fetchLatestNews();
+  let latestArticles;
+  try {
+    latestArticles = await news.fetchLatestNews();
+  } catch (e) {
+    diag.errors.push(`fetchLatestNews: ${e.message}`);
+    console.error('❌ Агрегатор: ошибка получения новостей', e.message);
+    return diag;
+  }
+
+  diag.totalArticles = (latestArticles || []).length;
   if (!latestArticles || latestArticles.length === 0) {
+    diag.errors.push('Не нашли ни одной новости в источниках (Google News + neftegaz.ru)');
     console.log('🚀 Агрегатор: Новостей не найдено.');
-    return 0;
+    return diag;
   }
 
   // 2. Получаем настройки автопостинга
   const autoPostSetting = await db.get("SELECT value FROM settings WHERE key = 'auto_post'");
-  const autoPost = autoPostSetting ? autoPostSetting.value === 'true' : false;
-
-  let newPostsCreated = 0;
+  diag.autoPost = autoPostSetting ? autoPostSetting.value === 'true' : false;
+  const autoPost = diag.autoPost;
 
   // Проверяем каждую новость
   for (const article of latestArticles) {
     // Не создаем больше 2 постов за один запуск планировщика, чтобы не спамить
-    if (newPostsCreated >= 2) break;
+    if (diag.createdCount >= 2) break;
 
     try {
-      // Проверяем, не обрабатывали ли мы уже эту новость
-      // Проверка по заголовку новости (или ссылке) в БД
       const existing = await db.get(
-        'SELECT id FROM posts WHERE title = ? OR content LIKE ?', 
+        'SELECT id FROM posts WHERE title = ? OR content LIKE ?',
         [article.title, `%${article.link}%`]
       );
 
       if (existing) {
-        continue; // Уже обрабатывали
+        diag.skippedDuplicates++;
+        continue;
       }
 
       console.log(`📝 Агрегатор: Обнаружена новая новость: "${article.title}". Генерация статьи через Gemini...`);
-      
-      // Генерируем профессиональную статью с помощью ИИ
+
       const generated = await gemini.generateArticle(article);
-      
+
       if (!generated || !generated.content) {
+        diag.errors.push(`Gemini вернул пустой результат для "${article.title}"`);
         console.error('❌ Агрегатор: ИИ вернул пустой результат.');
         continue;
       }
 
-      // Сохраняем пост в БД
       const status = autoPost ? 'scheduled' : 'draft';
-      const scheduledAt = autoPost ? new Date(Date.now() + 10 * 60000).toISOString() : null; // опубликовать через 10 минут, если автопостинг
+      const scheduledAt = autoPost ? new Date(Date.now() + 10 * 60000).toISOString() : null;
 
       const insertQuery = `
         INSERT INTO posts (title, content, media_url, status, scheduled_at, type)
         VALUES (?, ?, ?, ?, ?, 'organic')
       `;
-      // Ищем релевантную картинку в Wikipedia по ключевикам от Gemini (или по заголовку).
+
       let mediaUrl = null;
       try {
         const searchQuery = generated.imageKeywords || article.title;
@@ -90,7 +107,6 @@ async function runNewsAggregation() {
       } catch (e) {
         console.warn('Поиск картинки не удался:', e.message);
       }
-      // publishPost при null упадёт на брендированный logo.png через WEBAPP_URL.
 
       const sourceDomain = (() => {
         try { return new URL(article.link).hostname.replace(/^www\./, ''); }
@@ -106,16 +122,20 @@ async function runNewsAggregation() {
         scheduledAt
       ]);
 
-      newPostsCreated++;
+      diag.createdCount++;
       console.log(`✅ Агрегатор: Создан пост #${result.lastID} со статусом "${status}"`);
 
-      // Если включен автопостинг и пост запланирован сразу, опубликуем его
       if (autoPost) {
         const postData = await db.get('SELECT * FROM posts WHERE id = ?', [result.lastID]);
-        await bot.publishPost(postData);
+        try {
+          await bot.publishPost(postData);
+        } catch (pubErr) {
+          diag.errors.push(`Публикация поста #${result.lastID}: ${pubErr.message}`);
+        }
       }
 
     } catch (e) {
+      diag.errors.push(`Обработка "${article.title}": ${e.message}`);
       console.error(`❌ Агрегатор: Ошибка обработки новости "${article.title}":`, e.message);
     }
   }
@@ -123,7 +143,17 @@ async function runNewsAggregation() {
   // Опубликуем также запланированные рекламные посты, время которых пришло
   await publishScheduledPosts();
 
-  return newPostsCreated;
+  // Запомним время последнего запуска (для UI)
+  try {
+    const ts = new Date().toISOString();
+    await db.run(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = ?`,
+      ['last_cron_run', ts, ts]
+    );
+  } catch (_) {}
+
+  return diag;
 }
 
 // Публикация запланированных постов (если время пришло)
