@@ -958,6 +958,35 @@ input:checked + .slider:before {
   gap: 6px;
   padding: 8px 0 0;
 }
+
+.voice-input-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px 12px;
+  background: rgba(127, 90, 240, 0.10);
+  border: 1px solid rgba(127, 90, 240, 0.30);
+  border-radius: 14px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.voice-input-btn:hover {
+  background: rgba(127, 90, 240, 0.20);
+}
+.voice-input-btn.recording {
+  background: rgba(255, 60, 60, 0.18);
+  border-color: rgba(255, 60, 60, 0.55);
+  color: #fff;
+  animation: voicepulse 1.2s infinite ease-in-out;
+}
+@keyframes voicepulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 60, 60, 0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 60, 60, 0); }
+}
 .reaction-badge {
   display: inline-flex;
   align-items: center;

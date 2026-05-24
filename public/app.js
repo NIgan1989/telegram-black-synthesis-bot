@@ -21,6 +21,85 @@ function safePopup(title, message, btnType = 'ok') {
   }
 }
 
+// Голосовой ввод: кнопка 🎤 рядом с textarea/input. Распознавание через Web Speech API
+// браузера (русский). Текст добавляется в конец поля. Telegram WebView поддерживает
+// webkitSpeechRecognition на iOS 14.5+ и на Android Chrome.
+function setupVoiceInput(elementId) {
+  const ta = document.getElementById(elementId);
+  if (!ta) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    console.warn(`Voice input: API не поддерживается для #${elementId}`);
+    return;
+  }
+  // Не вешать кнопку дважды
+  if (ta.dataset.voiceAttached === '1') return;
+  ta.dataset.voiceAttached = '1';
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'voice-input-btn';
+  btn.innerHTML = '🎤 Голосом';
+  btn.title = 'Нажми и говори по-русски — текст добавится в поле';
+  ta.parentNode.insertBefore(btn, ta.nextSibling);
+
+  const recognition = new SR();
+  recognition.lang = 'ru-RU';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  let isRecording = false;
+
+  btn.addEventListener('click', () => {
+    if (isRecording) {
+      try { recognition.stop(); } catch (_) {}
+      return;
+    }
+    try {
+      recognition.start();
+    } catch (e) {
+      // Если уже идёт, прерываем
+      if (/already started/i.test(e.message)) {
+        try { recognition.stop(); } catch (_) {}
+      } else {
+        safePopup('Ошибка голосового ввода', e.message);
+      }
+    }
+  });
+
+  recognition.onstart = () => {
+    isRecording = true;
+    btn.classList.add('recording');
+    btn.innerHTML = '🔴 Идёт запись… (стоп)';
+  };
+
+  recognition.onresult = (event) => {
+    const transcript = (event.results[0][0].transcript || '').trim();
+    if (!transcript) return;
+    const sep = ta.value && !/\s$/.test(ta.value) ? ' ' : '';
+    ta.value = (ta.value || '') + sep + transcript;
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    btn.classList.remove('recording');
+    btn.innerHTML = '🎤 Голосом';
+  };
+
+  recognition.onerror = (event) => {
+    isRecording = false;
+    btn.classList.remove('recording');
+    btn.innerHTML = '🎤 Голосом';
+    if (event.error === 'no-speech' || event.error === 'aborted') return;
+    if (event.error === 'not-allowed') {
+      safePopup('Нет доступа к микрофону', 'Разреши Telegram использовать микрофон в настройках устройства.');
+      return;
+    }
+    safePopup('Ошибка распознавания', event.error || 'unknown');
+  };
+}
+
 // Глобальное состояние
 let state = {
   currentTab: 'overview',
@@ -682,7 +761,16 @@ function renderSentimentChart(sentiments) {
 // 🎛️ Обработчики событий (Event Handlers)
 // ---------------------------------------------
 function initEventHandlers() {
-  
+
+  // 0. Голосовой ввод для всех релевантных полей-промптов админки
+  [
+    'ai-user-prompt',         // модалка генерации поста по промпту — основное поле
+    'ai-result-content',      // редактор сгенерированного содержимого
+    'edit-ai-instruction',    // блок "Доработать через ИИ" в модалке поста
+    'edit-post-content',      // основной редактор текста поста
+    'order-post-content'      // создание рекламного заказа вручную
+  ].forEach(setupVoiceInput);
+
   // 1a. Кнопки фильтрации постов (вкладка Посты)
   const postFilterBtns = document.querySelectorAll('.filter-btn[data-status]');
   postFilterBtns.forEach(btn => {
