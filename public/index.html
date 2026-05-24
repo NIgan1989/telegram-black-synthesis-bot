@@ -496,6 +496,19 @@
             </div>
           </div>
 
+          <div class="form-group glass mt-2" style="padding: 12px;">
+            <div class="toggle-control">
+              <div>
+                <label class="toggle-title">🌐 Проверить факты в интернете</label>
+                <p class="toggle-desc">Gemini сначала найдёт реальные источники через Google Search и встроит ссылки на них прямо в пост. Без проверки — пишет из тренировочной базы, факты могут быть устаревшими или ошибочными.</p>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="ai-with-web-search" checked>
+                <span class="slider round"></span>
+              </label>
+            </div>
+          </div>
+
           <div class="modal-footer mt-2">
             <button type="button" class="btn btn-secondary" id="btn-cancel-ai">Отмена</button>
             <button type="button" class="btn btn-primary" id="btn-generate-ai">
@@ -519,6 +532,11 @@
           <div class="input-field mt-2">
             <label for="ai-result-media">Ссылка на изображение (опционально)</label>
             <input type="url" id="ai-result-media" placeholder="https://...">
+          </div>
+
+          <div id="ai-sources-section" class="hidden mt-2" style="background: rgba(127, 90, 240, 0.08); padding: 12px; border-radius: 10px;">
+            <label style="display:block; margin-bottom:6px; font-weight:600;">🌐 Источники найденные через Google Search:</label>
+            <ul id="ai-sources-list" style="margin:0; padding-left:18px; font-size: 0.85rem;"></ul>
           </div>
 
           <div class="input-field mt-2 hidden" id="ai-schedule-field">

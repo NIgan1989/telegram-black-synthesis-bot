@@ -1189,15 +1189,19 @@ function initAiPromptModal() {
       return;
     }
     const withChannelStyle = styleToggle.checked;
+    const webSearchToggle = document.getElementById('ai-with-web-search');
+    const withWebSearch = webSearchToggle ? webSearchToggle.checked : true;
     const orig = generateBtn.innerHTML;
     generateBtn.disabled = true;
-    generateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gemini думает...';
+    generateBtn.innerHTML = withWebSearch
+      ? '<i class="fa-solid fa-spinner fa-spin"></i> Gemini ищет источники...'
+      : '<i class="fa-solid fa-spinner fa-spin"></i> Gemini думает...';
 
     try {
       const res = await fetch('/api/posts/generate', {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ prompt, withChannelStyle })
+        body: JSON.stringify({ prompt, withChannelStyle, withWebSearch })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка генерации');
@@ -1205,6 +1209,26 @@ function initAiPromptModal() {
       titleInput.value = data.title || '';
       contentInput.value = data.content || '';
       mediaInput.value = data.media_url || '';
+
+      // Рендер списка источников из веб-поиска (если использовался)
+      const sourcesSection = document.getElementById('ai-sources-section');
+      const sourcesList = document.getElementById('ai-sources-list');
+      if (sourcesSection && sourcesList) {
+        if (data.sources && data.sources.length > 0) {
+          sourcesList.innerHTML = data.sources.map(s => {
+            const safeUrl = String(s.url).replace(/"/g, '&quot;');
+            const safeTitle = String(s.title || s.url).replace(/</g, '&lt;');
+            return `<li><a href="${safeUrl}" target="_blank" rel="noopener">${safeTitle}</a></li>`;
+          }).join('');
+          sourcesSection.classList.remove('hidden');
+        } else if (data.search_used) {
+          sourcesList.innerHTML = '<li>Google Search не вернул чистых источников</li>';
+          sourcesSection.classList.remove('hidden');
+        } else {
+          sourcesSection.classList.add('hidden');
+        }
+      }
+
       showStage('result');
       if (data.warning) {
         safePopup('⚠️ Mock-контент', data.warning);

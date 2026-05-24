@@ -668,13 +668,14 @@ app.post('/api/posts/improve', checkAuth, async (req, res) => {
 
 // 7a. Генерация поста по произвольному промпту (на лету, без сохранения)
 app.post('/api/posts/generate', checkAuth, async (req, res) => {
-  const { prompt, withChannelStyle } = req.body || {};
+  const { prompt, withChannelStyle, withWebSearch } = req.body || {};
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length < 5) {
     return res.status(400).json({ error: 'Промпт обязателен и должен содержать минимум 5 символов' });
   }
   try {
     const generated = await gemini.generatePostFromPrompt(prompt.trim(), {
-      withChannelStyle: withChannelStyle !== false
+      withChannelStyle: withChannelStyle !== false,
+      withWebSearch: withWebSearch !== false
     });
 
     // Параллельно с подготовкой ответа ищем картинку через Wikipedia.
@@ -691,7 +692,9 @@ app.post('/api/posts/generate', checkAuth, async (req, res) => {
       title: generated.title,
       content: generated.content,
       media_url: mediaUrl,
-      image_keywords: generated.imageKeywords || null
+      image_keywords: generated.imageKeywords || null,
+      sources: generated.sources || [],
+      search_used: !!generated._searchUsed
     };
     if (generated._mock) {
       response.warning = (() => {

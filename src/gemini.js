@@ -249,12 +249,125 @@ function mockAnalyzeSentiment(commentText) {
   return 'neutral';
 }
 
+// Прямой HTTP-вызов Gemini API с подключённым инструментом google_search (grounding).
+// Возвращает {text, sources}. Используется когда нужно, чтобы Gemini сначала пошёл в интернет
+// проверить факты и нашёл реальные источники, а потом написал пост.
+async function callGeminiWithSearch(promptText) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY не задан');
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const body = {
+    contents: [{ parts: [{ text: promptText }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.7 }
+  };
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`Gemini API ${res.status}: ${errBody.slice(0, 300)}`);
+  }
+
+  const data = await res.json();
+  const candidate = data.candidates && data.candidates[0];
+  if (!candidate) throw new Error('Gemini не вернул кандидатов');
+
+  const text = (candidate.content && candidate.content.parts)
+    ? candidate.content.parts.map(p => p.text || '').join('')
+    : '';
+  const grounding = candidate.groundingMetadata || {};
+  const sources = ((grounding.groundingChunks || [])
+    .filter(c => c.web && c.web.uri)
+    .map(c => ({ url: c.web.uri, title: c.web.title || c.web.uri })));
+
+  return { text, sources };
+}
+
+// Парсит JSON из текста Gemini, снимая markdown-обёртки ```json …``` если есть.
+function extractJsonFromText(text) {
+  let s = String(text || '').trim();
+  const fence = /^```(?:json)?\s*([\s\S]+?)\s*```$/i;
+  const m = s.match(fence);
+  if (m) s = m[1].trim();
+  return JSON.parse(s);
+}
+
+// Полноценная генерация поста с веб-поиском. Возвращает {title, content, imageKeywords, sources}.
+async function generateWithWebSearch(userPrompt, withChannelStyle) {
+  const channelStyle = withChannelStyle ? `СТИЛЬ КАНАЛА «Чёрный Синтез»:
+Экспертный, аналитический тон. Химпром и нефтехимия Казахстана и СНГ.
+Технические детали, региональный контекст.
+` : '';
+
+  const prompt = `${channelStyle}
+ЗАДАЧА РЕДАКТОРА: Найди в интернете АКТУАЛЬНЫЕ И ДОСТОВЕРНЫЕ источники по теме, и напиши пост на их основе для Telegram-канала.
+
+ТЕМА:
+${userPrompt}
+
+ШАГ 1: Через Google Search найди свежие новости от авторитетных источников (neftegaz.ru, interfax.ru, kursiv.kz, primeminister.kz, официальные сайты компаний, отраслевые издания). Игнорируй блоги без атрибуции, форумы, агрегаторы низкого качества.
+
+ШАГ 2: На основе НАЙДЕННЫХ фактов напиши пост. ОБЯЗАТЕЛЬНО включи 1-2 кликабельные [inline-ссылки](url) на главные источники прямо в текст лида или комментария. Если не нашёл достоверных источников — добавь в начало content явную пометку "_⚠️ Информация требует дополнительной проверки._" и пиши на основе общеотраслевых знаний.
+
+СТРУКТУРА:
+🏷 *<КОРОТКИЙ ЦЕПЛЯЮЩИЙ ЗАГОЛОВОК>*
+
+*Факт.* <Что произошло: компания, цифры, даты, локация. Жирным *выделяй ключевое*. Включи [inline-ссылку](url) на главный источник.>
+
+*Комментарий.* <Аналитика, контекст, значение для отрасли. Можно ещё одну [ссылку](url).>
+
+> «Прямая цитата чиновника/компании, если есть в найденных источниках. Если нет — опусти блок.»
+— Должность и имя
+
+🇰🇿 <Страновой контекст, если уместен>
+
+#хештег1 #хештег2 #хештег3
+
+ПРАВИЛА РАЗМЕТКИ:
+- Только *жирный*, _курсив_, [текст](url), > строка-цитата. БЕЗ ** или ##.
+- Длина: 600-1000 символов.
+
+ВЕРНИ СТРОГО JSON (без обёрток markdown, без \`\`\`json):
+{"title": "...", "content": "...", "imageKeywords": "2-4 слова для Wikipedia"}`;
+
+  const { text, sources } = await callGeminiWithSearch(prompt);
+  let parsed;
+  try {
+    parsed = extractJsonFromText(text);
+  } catch (e) {
+    throw new Error(`Не удалось распарсить JSON от Gemini: ${e.message}. Raw: ${text.slice(0, 200)}`);
+  }
+
+  return {
+    title: parsed.title || '',
+    content: sanitizeMarkdown(parsed.content || ''),
+    imageKeywords: parsed.imageKeywords || '',
+    sources: sources.slice(0, 8),
+    _searchUsed: true
+  };
+}
+
 // Генерация поста по произвольному запросу пользователя
 async function generatePostFromPrompt(userPrompt, options = {}) {
-  const { withChannelStyle = true } = options;
+  const { withChannelStyle = true, withWebSearch = true } = options;
 
   if (isDemo) {
     return { ...mockGenerateFromPrompt(userPrompt, withChannelStyle), _mock: true, _reason: !process.env.GEMINI_API_KEY ? 'no_api_key' : 'demo_mode_on' };
+  }
+
+  // С веб-поиском (по умолчанию) — сначала ищем источники, потом пишем по ним.
+  if (withWebSearch) {
+    try {
+      return await generateWithWebSearch(userPrompt, withChannelStyle);
+    } catch (e) {
+      console.warn('⚠️ Web-search generation failed, fallback на обычную:', e.message);
+      // Падаем дальше — попробуем без поиска
+    }
   }
 
   try {
