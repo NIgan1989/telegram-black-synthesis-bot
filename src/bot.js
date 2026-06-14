@@ -1042,7 +1042,7 @@ async function pinAdAnnouncement() {
   if (bot && bot.options && bot.me && bot.me.username) {
     // на всякий случай не используется — короче через env
   }
-  const botUsername = (process.env.TELEGRAM_BOT_USERNAME || 'black_synthesis_bot').replace(/^@/, '');
+  const botUsername = (process.env.TELEGRAM_BOT_USERNAME || 'auto_change_kz_bot').replace(/^@/, '');
   buttons.push([{ text: '📝 Оставить заявку', url: `https://t.me/${botUsername}?start=order` }]);
   if (adminContact) buttons.push([{ text: '💬 Связаться с админом', url: adminContact }]);
 

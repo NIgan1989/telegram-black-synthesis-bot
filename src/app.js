@@ -110,7 +110,7 @@ app.post('/api/auth', (req, res) => {
   if (!initDataRaw || !userId || userId === 'demo_id') {
     return res.status(403).json({
       error: 'Админка должна открываться через Telegram',
-      hint: 'Открой @black_synthesis_bot → команда /admin → нажми "Открыть админку". Прямая ссылка в браузере не сработает — там нет Telegram WebApp initData.'
+      hint: 'Открой @auto_change_kz_bot → команда /admin → нажми "Открыть админку". Прямая ссылка в браузере не сработает — там нет Telegram WebApp initData.'
     });
   }
 
