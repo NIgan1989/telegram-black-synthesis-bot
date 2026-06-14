@@ -136,6 +136,18 @@
           Заявки приходят через форму /submit.html и команду /submit бота. ИИ оценит рыночную цену и напишет описание автоматически — твоя задача только проверить и одобрить.
         </p>
 
+        <!-- Импорт с kolesa.kz -->
+        <div class="glass mt-2" style="padding: 12px; border-radius: 12px;">
+          <label style="display:block; font-weight:600; margin-bottom:6px;">⚡️ Импорт с kolesa.kz</label>
+          <div class="input-field">
+            <input type="url" id="kolesa-url-input" placeholder="https://kolesa.kz/a/show/221274023">
+          </div>
+          <button class="btn btn-primary btn-block mt-1" id="btn-import-kolesa">
+            <i class="fa-solid fa-download"></i> Прочитать и создать заявку
+          </button>
+          <p class="input-help">Система зайдёт на объявление, вытащит характеристики, цену и фото, создаст черновик. Бот делает то же, когда продавец присылает ссылку в чат.</p>
+        </div>
+
         <!-- Переключатель фильтров -->
         <div class="filter-bar glass mt-2">
           <button class="filter-btn active" data-listing-status="draft">⏳ Ждут одобрения</button>

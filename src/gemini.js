@@ -648,6 +648,88 @@ function mockEvaluateCar(car) {
   };
 }
 
+// Извлекает структурированные характеристики авто из сырых данных объявления
+// (заголовок + описание + пары параметров с kolesa.kz). Возвращает чистый объект полей.
+// exchangeWish — необязательный текст "что хочет взамен", если продавец его указал.
+async function extractCarFields({ title, description, params, priceKzt, exchangeWish }) {
+  const paramsText = params && typeof params === 'object'
+    ? Object.entries(params).map(([k, v]) => `${k}: ${v}`).join('\n')
+    : '';
+  const raw = [
+    title ? `Заголовок: ${title}` : '',
+    description ? `Описание: ${description}` : '',
+    priceKzt ? `Цена: ${priceKzt} ₸` : '',
+    paramsText ? `Характеристики:\n${paramsText}` : '',
+    exchangeWish ? `Что хочет взамен (от пользователя): ${exchangeWish}` : ''
+  ].filter(Boolean).join('\n\n');
+
+  if (isDemo || !genAI) {
+    return mockExtractCarFields(title, priceKzt, exchangeWish);
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            brand: { type: 'STRING', description: 'Марка, напр. Toyota' },
+            model: { type: 'STRING', description: 'Модель, напр. Camry' },
+            year: { type: 'INTEGER' },
+            mileage_km: { type: 'INTEGER', description: 'Пробег в км, только число' },
+            body: { type: 'STRING', description: 'Тип кузова' },
+            transmission: { type: 'STRING', description: 'АКПП / МКПП / Вариатор / Робот' },
+            drivetrain: { type: 'STRING', description: 'Передний / Задний / Полный' },
+            color: { type: 'STRING' },
+            engine: { type: 'STRING', description: 'Объём/тип двигателя, напр. "2.5 л, бензин"' },
+            city: { type: 'STRING' },
+            owner_asks_kzt: { type: 'INTEGER', description: 'Цена в тенге, только число' },
+            wants_brand: { type: 'STRING', description: 'Желаемая марка для обмена (из текста пользователя), иначе пусто' },
+            wants_model: { type: 'STRING' },
+            wants_text: { type: 'STRING', description: 'Свободное описание желаемого обмена, если есть' }
+          },
+          required: ['brand', 'model', 'year']
+        }
+      }
+    });
+
+    const prompt = `Извлеки характеристики автомобиля из данных объявления (kolesa.kz, Казахстан).
+Нормализуй: коробку как АКПП/МКПП/Вариатор/Робот; привод как Передний/Задний/Полный; пробег и цену — только числа (тенге).
+Если поля нет — оставь пустым (но brand, model, year обязательны).
+Поля wants_* заполняй ТОЛЬКО если пользователь явно написал, что хочет взамен.
+
+ДАННЫЕ:
+${raw}
+
+Верни строго JSON по схеме.`;
+
+    const result = await model.generateContent(prompt);
+    const parsed = JSON.parse(result.response.text());
+    return parsed;
+  } catch (e) {
+    console.warn('⚠️ extractCarFields failed:', e.message);
+    return mockExtractCarFields(title, priceKzt, exchangeWish);
+  }
+}
+
+function mockExtractCarFields(title, priceKzt, exchangeWish) {
+  // Грубый парсинг заголовка "Toyota Camry 2020 ..." для демо/фоллбэка.
+  const t = String(title || '');
+  const yearM = t.match(/\b(19|20)\d{2}\b/);
+  const words = t.replace(/[,|].*$/, '').trim().split(/\s+/);
+  return {
+    brand: words[0] || '',
+    model: words[1] || '',
+    year: yearM ? parseInt(yearM[0], 10) : null,
+    mileage_km: null, body: '', transmission: '', drivetrain: '', color: '', engine: '',
+    city: '',
+    owner_asks_kzt: priceKzt || null,
+    wants_text: exchangeWish || ''
+  };
+}
+
 module.exports = {
   generateArticle,
   analyzeSentiment,
@@ -655,5 +737,6 @@ module.exports = {
   improvePost,
   sanitizeMarkdown,
   richToHtml,
-  evaluateAndDescribeCar
+  evaluateAndDescribeCar,
+  extractCarFields
 };

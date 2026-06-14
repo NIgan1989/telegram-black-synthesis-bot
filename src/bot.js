@@ -2,6 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const db = require('./db');
 const gemini = require('./gemini');
 const telegraph = require('./telegraph');
+const kolesa = require('./kolesa');
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -172,6 +173,18 @@ async function handleIncomingMessage(msg) {
     return;
   }
 
+  const isPrivate = msg.chat.type === 'private';
+
+  // В личке: если в сообщении есть ссылка на kolesa.kz — импортируем объявление.
+  // Остаток текста (без ссылки) считаем пожеланием по обмену ("меняю на Hilux + доплата").
+  if (isPrivate) {
+    const kolesaUrl = kolesa.extractKolesaUrl(text);
+    if (kolesaUrl) {
+      await handleKolesaImport(msg, kolesaUrl, text);
+      return;
+    }
+  }
+
   const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
   if (!isGroup) return;
 
@@ -188,6 +201,67 @@ async function handleIncomingMessage(msg) {
   const fwdSrc = getForwardSource(msg);
   if (fwdSrc && isFromOurChannel(fwdSrc)) {
     await maybeDisableComments(msg);
+  }
+}
+
+// Импорт объявления с kolesa.kz, присланного пользователем в личку.
+// fullText — всё сообщение; вычитаем из него ссылку и трактуем остаток как пожелание обмена.
+async function handleKolesaImport(msg, url, fullText) {
+  const chatId = msg.chat.id;
+  const from = msg.from || {};
+  const exchangeWish = String(fullText || '').replace(url, '').trim();
+
+  const progress = await safeSend(chatId, '🔍 Читаю объявление с kolesa.kz и достаю характеристики… (10-20 сек)');
+
+  try {
+    const car = await kolesa.importFromKolesa(url, {
+      owner: {
+        telegram_id: from.id,
+        username: from.username || '',
+        first_name: from.first_name || '',
+        contact: from.username ? '@' + from.username : ''
+      },
+      exchangeWish
+    });
+
+    const title = `[Импорт] ${car.brand} ${car.model} ${car.year || ''}`.trim();
+    const summary = `${car.brand} ${car.model}, ${car.year || '?'}, ${car.mileage_km || '?'} км, ${car.city || ''}\nИсточник: ${url}`;
+    await db.run(
+      `INSERT INTO posts (title, content, media_url, status, type, car_data)
+       VALUES (?, ?, ?, 'draft', 'car_listing', ?)`,
+      [title, summary, car.photos[0] || null, JSON.stringify(car)]
+    );
+
+    const wishLine = car.wants.note || (car.wants.brand ? `${car.wants.brand} ${car.wants.model}` : '');
+    const reply = `✅ *Объявление принято!*\n\n` +
+      `🚗 ${car.brand} ${car.model} ${car.year || ''}\n` +
+      `🛣 Пробег: ${car.mileage_km ? car.mileage_km.toLocaleString('ru') + ' км' : '—'}\n` +
+      `💵 Цена: ${car.price_evaluation.owner_asks_kzt ? car.price_evaluation.owner_asks_kzt.toLocaleString('ru') + ' ₸' : '—'}\n` +
+      `📸 Фото загружено: ${car.photos.length}\n` +
+      (wishLine ? `🔄 Хотите взамен: ${wishLine}\n` : '') +
+      `\nОтправлено на модерацию. После проверки админ опубликует в канал, ИИ оценит честную рыночную цену.` +
+      (!wishLine ? `\n\n💡 Совет: пришлите ссылку ещё раз и допишите, что хотите взамен — например:\n«${url} меняю на Toyota Hilux 2019+, доплачу 2 млн»` : '');
+
+    await safeSend(chatId, reply, { parse_mode: 'Markdown' });
+
+    // Уведомление админу
+    if (adminTelegramId && String(from.id) !== String(adminTelegramId)) {
+      const who = from.username ? '@' + from.username : (from.first_name || `id ${from.id}`);
+      await safeSend(adminTelegramId,
+        `🚗 Импорт с kolesa от ${who}:\n${car.brand} ${car.model} ${car.year || ''}, ${car.city || ''}\n${url}\n\nОткрой админку → Объявления → одобри.`
+      ).catch(() => {});
+    }
+  } catch (e) {
+    console.error('❌ Kolesa import error:', e.message);
+    await safeSend(chatId,
+      `⚠️ Не удалось прочитать объявление автоматически.\n${e.message}\n\nЗаполни заявку через кнопку «🚗 Подать заявку» — это займёт пару минут.`,
+      { reply_markup: getMainKeyboard(false) }
+    );
+  } finally {
+    // Подчистим "читаю..." сообщение
+    if (progress && progress.message_id) {
+      bot.deleteMessage(chatId, progress.message_id).catch(() => {});
+    }
   }
 }
 
@@ -400,15 +474,22 @@ async function sendSubmitMessage(chatId, isAdmin) {
 
 «Авто обмен Казахстан» — площадка прямого обмена авто между владельцами. Никаких салонов и перекупов.
 
-✨ *Что произойдёт после твоей заявки:*
-1. Заполняешь форму (5 минут): фото, марка, год, пробег, что хочешь взамен
-2. ИИ оценивает рыночную цену по kolesa.kz / krisha.kz
-3. Админ проверяет заявку (обычно в течение нескольких часов)
-4. Объявление публикуется в канал, тебе пишут заинтересованные
+⚡️ *Самый быстрый способ — ссылка с kolesa.kz:*
+Просто пришли мне сюда ссылку на своё объявление, например:
+\`https://kolesa.kz/a/show/123456789\`
+Я сам прочитаю марку, год, пробег, цену и фото — заявка соберётся автоматически.
 
-💸 *Бесплатно* для всех. Объявление модерируется — спама и мошенников нет.
+💡 Можешь сразу дописать, что хочешь взамен:
+«kolesa.kz/a/show/… меняю на Toyota Hilux 2019+, доплачу 2 млн»
 
-📞 Связь с интересующимися — напрямую с тобой по указанному контакту.`;
+📝 *Или заполни форму вручную* — кнопка ниже.
+
+✨ *Что дальше:*
+1. ИИ оценивает честную рыночную цену по kolesa.kz / krisha.kz
+2. Админ проверяет заявку (обычно за несколько часов)
+3. Объявление выходит в канал, заинтересованные пишут тебе напрямую
+
+💸 *Бесплатно.* Всё модерируется — спама и мошенников нет.`;
 
   const buttons = [];
   if (webAppUrl) {

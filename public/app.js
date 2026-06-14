@@ -966,6 +966,43 @@ function initEventHandlers() {
     });
   });
 
+  // 1a-bis. Импорт объявления с kolesa.kz
+  const importKolesaBtn = document.getElementById('btn-import-kolesa');
+  if (importKolesaBtn) {
+    importKolesaBtn.addEventListener('click', async () => {
+      const input = document.getElementById('kolesa-url-input');
+      const url = (input.value || '').trim();
+      if (!/kolesa\.kz\/a\/show\/\d+/.test(url)) {
+        safePopup('Неверная ссылка', 'Вставь ссылку вида https://kolesa.kz/a/show/...');
+        return;
+      }
+      const orig = importKolesaBtn.innerHTML;
+      importKolesaBtn.disabled = true;
+      importKolesaBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Читаю объявление…';
+      try {
+        const res = await fetch('/api/listings/from-url', {
+          method: 'POST', headers: getHeaders(),
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error((data.error || 'Ошибка') + (data.hint ? '\n\n' + data.hint : ''));
+        const c = data.car || {};
+        safePopup('✅ Импортировано', `${c.brand || ''} ${c.model || ''} ${c.year || ''}, фото: ${data.photos_count}. Заявка в очереди — проверь и одобри.`);
+        input.value = '';
+        state.listingFilter = 'draft';
+        document.querySelectorAll('.filter-btn[data-listing-status]').forEach(b => {
+          b.classList.toggle('active', b.getAttribute('data-listing-status') === 'draft');
+        });
+        await loadListings();
+      } catch (e) {
+        safePopup('Ошибка импорта', e.message);
+      } finally {
+        importKolesaBtn.disabled = false;
+        importKolesaBtn.innerHTML = orig;
+      }
+    });
+  }
+
   // 1b. Кнопки фильтрации заявок на рекламу (вкладка Реклама)
   const orderFilterBtns = document.querySelectorAll('.order-filter-btn');
   orderFilterBtns.forEach(btn => {

@@ -6,6 +6,7 @@ const gemini = require('./gemini');
 const news = require('./news');
 const scheduler = require('./scheduler');
 const images = require('./images');
+const kolesa = require('./kolesa');
 const crypto = require('crypto');
 
 const app = express();
@@ -869,6 +870,29 @@ app.get('/api/listings', checkAuth, async (req, res) => {
 });
 
 function tryParseJson(s) { try { return JSON.parse(s); } catch (_) { return null; } }
+
+// Импорт объявления по ссылке kolesa.kz (admin). Заходит на страницу, тащит
+// характеристики + фото + цену, нормализует через Gemini, создаёт draft-заявку.
+app.post('/api/listings/from-url', checkAuth, async (req, res) => {
+  const { url, exchangeWish } = req.body || {};
+  if (!url || !kolesa.isKolesaUrl(url)) {
+    return res.status(400).json({ error: 'Дай корректную ссылку kolesa.kz/a/show/...' });
+  }
+  try {
+    const car = await kolesa.importFromKolesa(url, { exchangeWish: exchangeWish || '' });
+    const title = `[Импорт] ${car.brand} ${car.model} ${car.year || ''}`.trim();
+    const summary = `${car.brand} ${car.model}, ${car.year || '?'}, ${car.mileage_km || '?'} км, ${car.city || ''}\nИсточник: ${url}`;
+    const ins = await db.run(
+      `INSERT INTO posts (title, content, media_url, status, type, car_data)
+       VALUES (?, ?, ?, 'draft', 'car_listing', ?)`,
+      [title, summary, car.photos[0] || null, JSON.stringify(car)]
+    );
+    res.json({ success: true, id: ins.lastID, car, photos_count: car.photos.length });
+  } catch (err) {
+    console.error('❌ import from kolesa failed:', err.message);
+    res.status(502).json({ error: err.message, hint: 'Если kolesa блокирует — заполни заявку вручную через форму.' });
+  }
+});
 
 // Одобрение заявки: вызывает Gemini оценку + публикует в канал.
 // Тяжёлый: 5-15 сек (поиск цен через Google + генерация описания + sendMessage в Telegram).
