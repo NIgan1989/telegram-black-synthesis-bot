@@ -32,11 +32,15 @@ function getAdminContactUrl() {
 // Где возможно, ставим web_app-кнопки чтобы открывать Mini App в один тап,
 // иначе падаем на текстовые кнопки, которые транслируются в команды.
 function getMainKeyboard(isAdmin) {
+  const submitBtn = webAppUrl
+    ? { text: '🚗 Подать заявку', web_app: { url: `${webAppUrl}/submit.html` } }
+    : { text: '🚗 Подать заявку' };
   const orderBtn = webAppUrl
-    ? { text: '💼 Заказать рекламу', web_app: { url: `${webAppUrl}/order.html` } }
-    : { text: '💼 Заказать рекламу' };
+    ? { text: '💼 Реклама', web_app: { url: `${webAppUrl}/order.html` } }
+    : { text: '💼 Реклама' };
 
   const keyboard = [
+    [submitBtn],
     [{ text: '📢 О канале' }, orderBtn],
     [{ text: '❓ Помощь' }]
   ];
@@ -45,7 +49,7 @@ function getMainKeyboard(isAdmin) {
     const adminBtn = webAppUrl
       ? { text: '🛠 Админка', web_app: { url: webAppUrl } }
       : { text: '🛠 Админка' };
-    keyboard.splice(1, 0, [{ text: '📊 Статистика' }, adminBtn]);
+    keyboard.splice(2, 0, [{ text: '📊 Статистика' }, adminBtn]);
   }
 
   return {
@@ -58,8 +62,9 @@ function getMainKeyboard(isAdmin) {
 // Маппинг текста кнопок reply-клавиатуры на команды — на случай fallback'а
 // (когда WEBAPP_URL не задан и web_app-кнопок нет, тап шлёт текст).
 const BUTTON_TO_COMMAND = {
+  '🚗 Подать заявку': '/submit',
   '📢 О канале': '/about',
-  '💼 Заказать рекламу': '/order',
+  '💼 Реклама': '/order',
   '❓ Помощь': '/help',
   '📊 Статистика': '/stats',
   '🛠 Админка': '/admin'
@@ -120,8 +125,9 @@ async function registerBotCommands() {
 
   const publicCommands = [
     { command: 'start', description: 'Информация о канале' },
-    { command: 'about', description: 'О канале «Чёрный Синтез»' },
-    { command: 'order', description: 'Заказать рекламу' },
+    { command: 'about', description: 'О канале «Авто обмен Казахстан»' },
+    { command: 'submit', description: 'Подать машину на обмен' },
+    { command: 'order', description: 'Заказать рекламу автоуслуг' },
     { command: 'help', description: 'Список команд' }
   ];
 
@@ -249,13 +255,16 @@ async function handleCommand(msg, text) {
 
   switch (command) {
     case '/start':
-      // Deeplink-параметр (например /start order) — переход с кнопки в канале на заказ рекламы.
+      // Deeplink-параметр (например /start order, /start submit) — переход с кнопки в канале.
       if (argText === 'order') return sendOrderMessage(chatId, msg.from, isAdmin);
+      if (argText === 'submit') return sendSubmitMessage(chatId, isAdmin);
       return sendStartMessage(chatId, isAdmin);
     case '/about':
       return sendAboutMessage(chatId, isAdmin);
     case '/help':
       return sendHelpMessage(chatId, isAdmin);
+    case '/submit':
+      return sendSubmitMessage(chatId, isAdmin);
     case '/order':
       return sendOrderMessage(chatId, msg.from, isAdmin);
     case '/admin':
@@ -321,19 +330,21 @@ async function sendStartMessage(chatId, isAdmin) {
     ? `📢 Канал: [${channelId}](${channelUrl})`
     : `📢 Канал: ${channelId || ''}`;
 
-  const text = `👋 *Добро пожаловать!*
+  const text = `👋 *Добро пожаловать в Авто обмен Казахстан!*
 
-*Чёрный Синтез* — аналитический канал о химической и нефтехимической промышленности Казахстана и стран СНГ.
+Канал для тех, кто хочет ОБМЕНЯТЬ свою машину напрямую, минуя салоны вроде «Санжар рулит», «Ержан рулит» и «Астер», которые занижают цены на 15-25 %.
 
 ${channelLine}
 
-📊 *Здесь:*
-• Анализ ключевых событий отрасли
-• Технологии переработки и синтеза
-• Обзоры рынка полимеров и удобрений
-• Новости заводов и кластеров
+🔄 *Что мы делаем:*
+• ИИ оценивает *честную рыночную цену* твоей машины по kolesa.kz
+• Показываем разницу с предложением салонов
+• Подбираем варианты прямого обмена
+• Объявления модерируются, мусора нет
 
-Используй кнопки внизу — меню закреплено в этом чате.`;
+🚗 *Подать машину на обмен* — нажми «Подать заявку» внизу или команда /submit.
+
+Используй меню внизу — оно закреплено.`;
 
   return safeSend(chatId, text, {
     parse_mode: 'Markdown',
@@ -342,19 +353,23 @@ ${channelLine}
 }
 
 async function sendAboutMessage(chatId, isAdmin) {
-  const text = `🏭 *О канале «Чёрный Синтез»*
+  const text = `🚗 *О канале «Авто обмен Казахстан»*
 
-Канал ведёт отраслевая команда аналитиков. Здесь публикуются:
+Мы — независимая площадка прямого обмена автомобилями.
 
-⚙️ *Технологии:* каталитические процессы, полимеризация, дегидрирование, переработка газа и нефти.
+🎯 *Зачем нужен канал:*
+Салоны типа «Санжар рулит», «Ержан рулит», «Астер» покупают б/у машины на 15-25 % ниже рынка и перепродают с наценкой. Хозяин теряет деньги, покупатель переплачивает. Мы убираем этот лишний слой.
 
-📈 *Рынки:* динамика цен на полипропилен, ПЭ, ПВХ, аммиак, карбамид и азотные удобрения.
+🤖 *Как помогает ИИ (Gemini + Google Search):*
+• Оценивает РЫНОЧНУЮ цену именно твоей машины (год, пробег, состояние) по kolesa.kz, krisha.kz, mojo.kz
+• Показывает сколько дадут в салоне — для сравнения
+• Пишет красивое описание объявления автоматически
+• Анализирует тональность комментариев
 
-🌍 *Регион:* Казахстан, Узбекистан, Россия, Беларусь — крупные проекты, модернизации НПЗ, химкластеры.
+✅ *Модерация:* каждое объявление проверяется админом, спама и мошенников нет.
 
-🤖 *ИИ-аналитика:* посты готовятся с помощью Google Gemini, тональность комментариев анализируется автоматически.
-
-📩 Для сотрудничества и рекламы — команда /order.`;
+📝 *Подать машину:* команда /submit или кнопка «🚗 Подать заявку».
+📞 *Реклама автоуслуг (страхование, шины, сервис):* /order.`;
 
   return safeSend(chatId, text, {
     parse_mode: 'Markdown',
@@ -368,10 +383,11 @@ async function sendHelpMessage(chatId, isAdmin) {
     '',
     '/start — приветствие и быстрый старт',
     '/about — подробнее о канале',
-    '/order — заказать рекламу',
+    '/submit — подать машину на обмен',
+    '/order — реклама автоуслуг (страхование, сервис, шины)',
     '/help — этот список',
     '',
-    '_Внизу чата закреплено меню с кнопками._'
+    '_Меню внизу закреплено в этом чате._'
   ];
   return safeSend(chatId, lines.join('\n'), {
     parse_mode: 'Markdown',
@@ -379,23 +395,52 @@ async function sendHelpMessage(chatId, isAdmin) {
   });
 }
 
+async function sendSubmitMessage(chatId, isAdmin) {
+  const text = `🚗 *Подать машину на обмен*
+
+«Авто обмен Казахстан» — площадка прямого обмена авто между владельцами. Никаких салонов и перекупов.
+
+✨ *Что произойдёт после твоей заявки:*
+1. Заполняешь форму (5 минут): фото, марка, год, пробег, что хочешь взамен
+2. ИИ оценивает рыночную цену по kolesa.kz / krisha.kz
+3. Админ проверяет заявку (обычно в течение нескольких часов)
+4. Объявление публикуется в канал, тебе пишут заинтересованные
+
+💸 *Бесплатно* для всех. Объявление модерируется — спама и мошенников нет.
+
+📞 Связь с интересующимися — напрямую с тобой по указанному контакту.`;
+
+  const buttons = [];
+  if (webAppUrl) {
+    buttons.push([{ text: '📝 Открыть форму заявки', web_app: { url: `${webAppUrl}/submit.html` } }]);
+  }
+  const adminContact = getAdminContactUrl();
+  if (adminContact) buttons.push([{ text: '💬 Вопрос админу', url: adminContact }]);
+
+  return safeSend(chatId, text, {
+    parse_mode: 'Markdown',
+    reply_markup: buttons.length ? { inline_keyboard: buttons } : undefined
+  });
+}
+
 async function sendOrderMessage(chatId, fromUser, isAdmin) {
-  const text = `📢 *Реклама в канале «Чёрный Синтез»*
+  const text = `📢 *Реклама в «Авто обмен Казахстан»*
 
-Канал читают специалисты химической и нефтехимической отрасли Казахстана и СНГ. Здесь покупают рекламу:
+Канал читают владельцы авто и активные покупатели в Казахстане. Здесь подходит реклама автоуслуг:
 
-• Производители оборудования и реагентов
-• ИТ-решения для промышленности
-• Образовательные программы и конференции
-• Вакансии в крупных компаниях отрасли
-• Логистика и сервис
+• Автостраховка и КАСКО
+• Автосервис, шиномонтаж, диагностика
+• Шины, диски, запчасти
+• Юристы по ДТП и спорам
+• Автокредиты и лизинг
+• Аренда авто
 
 📝 *Как заказать:*
 1. Напиши админу с описанием задачи
 2. Согласуй текст, изображение и дату
 3. После оплаты пост публикуется в выбранное время
 
-💡 Возможен как готовый пост (твой материал), так и нативная статья от лица канала (ИИ-генерация с твоими тезисами).`;
+💡 Можно прислать готовый пост или попросить ИИ написать его за тебя.`;
 
   const adminContact = getAdminContactUrl();
   const buttons = [];
@@ -438,25 +483,29 @@ async function sendStatsMessage(chatId, isAdmin) {
     const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
 
     const publishedToday = await db.get(
-      "SELECT COUNT(*) AS count FROM posts WHERE status = ? AND published_at >= ? AND published_at <= ?",
+      "SELECT COUNT(*) AS count FROM posts WHERE status = ? AND type = 'car_listing' AND published_at >= ? AND published_at <= ?",
       ['published', todayStart.toISOString(), todayEnd.toISOString()]
     );
-    const drafts = await db.get("SELECT COUNT(*) AS count FROM posts WHERE status = ?", ['draft']);
-    const scheduled = await db.get("SELECT COUNT(*) AS count FROM posts WHERE status = ?", ['scheduled']);
+    const pendingListings = await db.get(
+      "SELECT COUNT(*) AS count FROM posts WHERE status = 'draft' AND type = 'car_listing'"
+    );
+    const publishedTotal = await db.get(
+      "SELECT COUNT(*) AS count FROM posts WHERE status = 'published' AND type = 'car_listing'"
+    );
     const pendingOrders = await db.get("SELECT COUNT(*) AS count FROM orders WHERE status = ?", ['pending']);
-    const paidOrders = await db.get("SELECT COUNT(*) AS count FROM orders WHERE status = ?", ['paid']);
     const totalRevenue = await db.get("SELECT COALESCE(SUM(amount_paid), 0) AS total FROM orders WHERE status IN ('paid', 'completed')");
 
-    const text = `📊 *Статистика «Чёрный Синтез»*
+    const text = `📊 *Статистика «Авто обмен Казахстан»*
 
 👥 Подписчики: *${subs}*
-📝 Опубликовано сегодня: *${publishedToday ? publishedToday.count : 0}*
-📂 Черновиков в очереди: *${drafts ? drafts.count : 0}*
-⏰ Запланировано: *${scheduled ? scheduled.count : 0}*
 
-💼 *Реклама*
-📨 Заявок ожидает: *${pendingOrders ? pendingOrders.count : 0}*
-✅ Активных заказов: *${paidOrders ? paidOrders.count : 0}*
+🚗 *Объявления об обмене*
+📨 Заявок ожидают одобрения: *${pendingListings ? pendingListings.count : 0}*
+✅ Опубликовано сегодня: *${publishedToday ? publishedToday.count : 0}*
+📂 Всего в канале: *${publishedTotal ? publishedTotal.count : 0}*
+
+💼 *Реклама автоуслуг*
+📨 Заявок на рекламу: *${pendingOrders ? pendingOrders.count : 0}*
 💰 Заработано: *${totalRevenue ? Number(totalRevenue.total).toLocaleString('ru-RU') : 0} ₸*`;
 
     return safeSend(chatId, text, {

@@ -155,7 +155,8 @@ app.get('/api/stats', checkAuth, async (req, res) => {
     const statsData = await db.query('SELECT * FROM stats ORDER BY date DESC LIMIT 7');
 
     // Реальные счётчики прямо из таблиц — всегда актуальны.
-    const postsCount = await db.get('SELECT COUNT(*) as count FROM posts');
+    const postsCount = await db.get("SELECT COUNT(*) as count FROM posts WHERE type = 'car_listing' AND status = 'published'");
+    const pendingListings = await db.get("SELECT COUNT(*) as count FROM posts WHERE type = 'car_listing' AND status = 'draft'");
     const ordersCount = await db.get("SELECT COUNT(*) as count FROM orders WHERE status = 'completed' OR status = 'paid'");
     const commentsCount = await db.get('SELECT COUNT(*) as count FROM comments');
 
@@ -193,6 +194,7 @@ app.get('/api/stats', checkAuth, async (req, res) => {
       history: statsData.reverse(),
       summary: {
         totalPosts: postsCount ? postsCount.count : 0,
+        pendingListings: pendingListings ? pendingListings.count : 0,
         completedOrders: ordersCount ? ordersCount.count : 0,
         totalComments: commentsCount ? commentsCount.count : 0,
         sentiments: sentimentCounts,
@@ -756,6 +758,168 @@ app.post('/api/cron-trigger', checkAuth, async (req, res) => {
     } else {
       res.json({ success: true, ...diag });
     }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================================
+//  АВТО ОБМЕН КАЗАХСТАН — заявки на объявления о машинах
+// =========================================================================
+
+// Публичная подача заявки. Без авторизации, чтобы любой мог подать через форму.
+// Honeypot против ботов. Сохраняет как draft, status='draft', type='car_listing'.
+app.post('/api/listings/submit', async (req, res) => {
+  const b = req.body || {};
+  if (b.honeypot) return res.json({ success: true });
+
+  const car = {
+    brand: (b.brand || '').trim(),
+    model: (b.model || '').trim(),
+    year: parseInt(b.year, 10) || null,
+    mileage_km: parseInt(b.mileage_km, 10) || null,
+    body: (b.body || '').trim(),
+    transmission: (b.transmission || '').trim(),
+    drivetrain: (b.drivetrain || '').trim(),
+    color: (b.color || '').trim(),
+    condition: (b.condition || '').trim(),
+    city: (b.city || '').trim(),
+    photos: Array.isArray(b.photos) ? b.photos.filter(u => typeof u === 'string' && u.startsWith('http')).slice(0, 6) : [],
+    wants: {
+      brand: (b.wants_brand || '').trim(),
+      model: (b.wants_model || '').trim(),
+      year_from: parseInt(b.wants_year_from, 10) || null,
+      doplata_kzt: parseInt(b.wants_doplata_kzt, 10) || 0,
+      doplata_direction: (b.wants_doplata_direction || '').trim()
+    },
+    owner: {
+      telegram_id: b.telegram_user_id || null,
+      username: (b.telegram_username || '').replace(/^@/, ''),
+      first_name: (b.telegram_first_name || '').trim(),
+      contact: (b.contact || '').trim()
+    },
+    vin: (b.vin || '').trim().toUpperCase(),
+    price_evaluation: {
+      owner_asks_kzt: parseInt(b.owner_asks_kzt, 10) || null
+    },
+    submitted_at: new Date().toISOString()
+  };
+
+  if (!car.brand || !car.model || !car.year) {
+    return res.status(400).json({ error: 'Укажите минимум марку, модель и год.' });
+  }
+  if (!car.owner.contact && !car.owner.username) {
+    return res.status(400).json({ error: 'Укажите контакт для связи (телеграм или телефон).' });
+  }
+
+  try {
+    const title = `[Заявка] ${car.brand} ${car.model} ${car.year} → ${car.wants.brand || '?'}`;
+    const summary = `${car.brand} ${car.model}, ${car.year}, ${car.mileage_km || '?'} км, ${car.city}\n` +
+      `Хочет: ${car.wants.brand} ${car.wants.model || ''} ${car.wants.year_from ? car.wants.year_from + '+' : ''}`;
+
+    const ins = await db.run(
+      `INSERT INTO posts (title, content, media_url, status, type, car_data)
+       VALUES (?, ?, ?, 'draft', 'car_listing', ?)`,
+      [title, summary, car.photos[0] || null, JSON.stringify(car)]
+    );
+
+    // Уведомление админу в Telegram о новой заявке
+    try {
+      const botInstance = bot.getBotInstance();
+      const adminId = process.env.ADMIN_TELEGRAM_ID;
+      if (botInstance && adminId) {
+        const msg = `🚗 <b>Новая заявка на обмен</b>\n\n` +
+          `<b>${car.brand} ${car.model}</b>, ${car.year}\n` +
+          `Пробег: ${car.mileage_km || '?'} км\n` +
+          `Город: ${car.city}\n\n` +
+          `🔄 Хочет обменять на: ${car.wants.brand} ${car.wants.model || ''}\n` +
+          `Доплата: ${car.wants.doplata_kzt ? car.wants.doplata_kzt.toLocaleString('ru') + ' ₸' : 'нет'}\n\n` +
+          `Контакт: ${car.owner.contact || ('@' + car.owner.username)}\n\n` +
+          `Открой админку → Объявления → одобри или отклони.`;
+        botInstance.sendMessage(adminId, msg, { parse_mode: 'HTML' }).catch(() => {});
+      }
+    } catch (_) {}
+
+    res.json({ success: true, id: ins.lastID });
+  } catch (err) {
+    console.error('❌ submit listing failed:', err.message);
+    res.status(500).json({ error: 'Не удалось сохранить заявку. Попробуйте позже.' });
+  }
+});
+
+// Список объявлений для админки (с фильтром по статусу)
+app.get('/api/listings', checkAuth, async (req, res) => {
+  const { status } = req.query;
+  try {
+    let rows;
+    if (status) {
+      rows = await db.query(
+        "SELECT * FROM posts WHERE type = 'car_listing' AND status = ? ORDER BY id DESC LIMIT 100",
+        [status]
+      );
+    } else {
+      rows = await db.query(
+        "SELECT * FROM posts WHERE type = 'car_listing' ORDER BY id DESC LIMIT 100"
+      );
+    }
+    res.json(rows.map(r => ({ ...r, car_data: tryParseJson(r.car_data) })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function tryParseJson(s) { try { return JSON.parse(s); } catch (_) { return null; } }
+
+// Одобрение заявки: вызывает Gemini оценку + публикует в канал.
+// Тяжёлый: 5-15 сек (поиск цен через Google + генерация описания + sendMessage в Telegram).
+app.post('/api/listings/:id/approve', checkAuth, async (req, res) => {
+  const { id } = req.params;
+  const postId = parseInt(id, 10);
+  if (!Number.isInteger(postId) || postId <= 0) {
+    return res.status(400).json({ error: 'Невалидный id' });
+  }
+  try {
+    const row = await db.get("SELECT * FROM posts WHERE id = ? AND type = 'car_listing'", [postId]);
+    if (!row) return res.status(404).json({ error: 'Заявка не найдена' });
+    const car = tryParseJson(row.car_data) || {};
+
+    // 1. Gemini оценивает рыночную цену и пишет красивое описание
+    const evaluation = await gemini.evaluateAndDescribeCar(car);
+
+    // Сохраняем обогащённый car_data
+    car.price_evaluation = evaluation.price_evaluation;
+    car.ai_generated_at = new Date().toISOString();
+
+    await db.run(
+      'UPDATE posts SET title = ?, content = ?, car_data = ? WHERE id = ?',
+      [evaluation.title, evaluation.content, JSON.stringify(car), postId]
+    );
+
+    // 2. Публикация в канал
+    const refreshed = await db.get('SELECT * FROM posts WHERE id = ?', [postId]);
+    const tgMsgId = await bot.publishPost(refreshed);
+
+    res.json({
+      success: true,
+      telegram_message_id: tgMsgId,
+      price_evaluation: evaluation.price_evaluation,
+      mock: !!evaluation._mock
+    });
+  } catch (err) {
+    console.error(`❌ approve listing #${id} failed:`, err.message);
+    res.status(500).json({
+      error: err.message,
+      hint: 'Если про бота — проверь TELEGRAM_BOT_TOKEN. Если про Gemini — GEMINI_API_KEY.'
+    });
+  }
+});
+
+// Отклонение заявки
+app.post('/api/listings/:id/reject', checkAuth, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.run("UPDATE posts SET status = 'rejected' WHERE id = ? AND type = 'car_listing'", [id]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Подать машину на обмен — Авто обмен Казахстан</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .submit-page { max-width: 600px; margin: 0 auto; padding: 16px; }
+    .submit-hero { text-align: center; margin-bottom: 16px; }
+    .submit-hero img { width: 84px; height: 84px; border-radius: 50%; margin-bottom: 10px; }
+    .submit-hero h1 { font-family: var(--font-heading); font-size: 1.35rem; margin: 0 0 6px; }
+    .submit-hero p { opacity: 0.75; font-size: 0.88rem; }
+    .submit-form { padding: 18px; border-radius: 16px; }
+    .submit-form h2 { font-family: var(--font-heading); font-size: 1.05rem; margin: 16px 0 8px; }
+    .submit-form h2:first-child { margin-top: 0; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .honeypot { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
+    .req { color: #ff453a; }
+    .success-card { text-align: center; padding: 30px 20px; }
+    .success-card i { font-size: 3rem; color: #34c759; margin-bottom: 12px; }
+    .why-block { padding: 14px; margin-bottom: 16px; font-size: 0.85rem; border-radius: 12px; }
+    .why-block ul { margin: 6px 0 0; padding-left: 18px; opacity: 0.85; }
+    .why-block li { margin-bottom: 4px; }
+    .photo-hint { font-size: 0.78rem; opacity: 0.6; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="app-container submit-page">
+
+    <div class="submit-hero">
+      <img src="logo.png" alt="Авто обмен Казахстан">
+      <h1>Подать машину на обмен</h1>
+      <p>Прямой обмен между владельцами. Без салонов, которые занижают цены.</p>
+    </div>
+
+    <div class="why-block glass">
+      <b>🤖 Что сделает ИИ после подачи:</b>
+      <ul>
+        <li>Оценит честную рыночную цену по kolesa.kz / krisha.kz</li>
+        <li>Покажет, на сколько занижают салоны</li>
+        <li>Напишет красивое описание объявления</li>
+      </ul>
+      <div style="margin-top:8px;">✅ Бесплатно. Объявление проверяет админ перед публикацией.</div>
+    </div>
+
+    <form id="submit-form" class="submit-form glass">
+
+      <h2>🚗 Ваша машина</h2>
+      <div class="row2">
+        <div class="input-field">
+          <label for="brand">Марка <span class="req">*</span></label>
+          <input type="text" id="brand" name="brand" required placeholder="Toyota">
+        </div>
+        <div class="input-field">
+          <label for="model">Модель <span class="req">*</span></label>
+          <input type="text" id="model" name="model" required placeholder="Camry">
+        </div>
+      </div>
+
+      <div class="row2 mt-2">
+        <div class="input-field">
+          <label for="year">Год <span class="req">*</span></label>
+          <input type="number" id="year" name="year" required min="1950" max="2030" placeholder="2020">
+        </div>
+        <div class="input-field">
+          <label for="mileage_km">Пробег, км</label>
+          <input type="number" id="mileage_km" name="mileage_km" min="0" max="2000000" placeholder="78000">
+        </div>
+      </div>
+
+      <div class="row2 mt-2">
+        <div class="input-field">
+          <label for="transmission">КПП</label>
+          <select id="transmission" name="transmission">
+            <option value="">—</option>
+            <option>АКПП</option><option>МКПП</option><option>Вариатор</option><option>Робот</option>
+          </select>
+        </div>
+        <div class="input-field">
+          <label for="drivetrain">Привод</label>
+          <select id="drivetrain" name="drivetrain">
+            <option value="">—</option>
+            <option>Передний</option><option>Задний</option><option>Полный</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row2 mt-2">
+        <div class="input-field">
+          <label for="body">Кузов</label>
+          <input type="text" id="body" name="body" placeholder="Седан">
+        </div>
+        <div class="input-field">
+          <label for="color">Цвет</label>
+          <input type="text" id="color" name="color" placeholder="Белый">
+        </div>
+      </div>
+
+      <div class="row2 mt-2">
+        <div class="input-field">
+          <label for="condition">Состояние</label>
+          <select id="condition" name="condition">
+            <option value="">—</option>
+            <option>Отличное</option><option>Хорошее</option><option>Среднее</option><option>Требует ремонта</option>
+          </select>
+        </div>
+        <div class="input-field">
+          <label for="city">Город <span class="req">*</span></label>
+          <input type="text" id="city" name="city" required placeholder="Алматы">
+        </div>
+      </div>
+
+      <div class="input-field mt-2">
+        <label for="owner_asks_kzt">Ваша оценка стоимости, ₸</label>
+        <input type="number" id="owner_asks_kzt" name="owner_asks_kzt" min="0" placeholder="14500000">
+        <div class="photo-hint">ИИ всё равно проверит цену по рынку — это ориентир.</div>
+      </div>
+
+      <div class="input-field mt-2">
+        <label for="vin">VIN (для проверки истории, опционально)</label>
+        <input type="text" id="vin" name="vin" maxlength="17" placeholder="JTNBE40K803218XXX">
+      </div>
+
+      <div class="input-field mt-2">
+        <label for="photos">Ссылки на фото (по одной в строке)</label>
+        <textarea id="photos" name="photos_raw" rows="3" placeholder="https://... (загрузите фото на любой хостинг или пришлите админу)"></textarea>
+        <div class="photo-hint">Если нет ссылок — оставьте пусто, фото пришлёте админу в личку после подачи.</div>
+      </div>
+
+      <h2>🔄 Что хотите взамен</h2>
+      <div class="row2">
+        <div class="input-field">
+          <label for="wants_brand">Марка</label>
+          <input type="text" id="wants_brand" name="wants_brand" placeholder="Toyota">
+        </div>
+        <div class="input-field">
+          <label for="wants_model">Модель</label>
+          <input type="text" id="wants_model" name="wants_model" placeholder="Hilux">
+        </div>
+      </div>
+
+      <div class="row2 mt-2">
+        <div class="input-field">
+          <label for="wants_year_from">Год от</label>
+          <input type="number" id="wants_year_from" name="wants_year_from" min="1950" max="2030" placeholder="2018">
+        </div>
+        <div class="input-field">
+          <label for="wants_doplata_kzt">Доплата, ₸</label>
+          <input type="number" id="wants_doplata_kzt" name="wants_doplata_kzt" min="0" placeholder="2000000">
+        </div>
+      </div>
+
+      <div class="input-field mt-2">
+        <label for="wants_doplata_direction">Кто доплачивает</label>
+        <select id="wants_doplata_direction" name="wants_doplata_direction">
+          <option value="">Без доплат</option>
+          <option value="я доплачиваю">Я доплачиваю</option>
+          <option value="мне доплачивают">Мне доплачивают</option>
+        </select>
+      </div>
+
+      <h2>📞 Контакт</h2>
+      <div class="input-field">
+        <label for="contact">Как с вами связаться <span class="req">*</span></label>
+        <input type="text" id="contact" name="contact" required placeholder="@username или +7 700 000 0000">
+      </div>
+
+      <input type="text" name="honeypot" class="honeypot" tabindex="-1" autocomplete="off">
+
+      <div class="modal-footer mt-2">
+        <button type="submit" class="btn btn-success btn-block" id="submit-btn">
+          <i class="fa-solid fa-paper-plane"></i> Отправить заявку
+        </button>
+      </div>
+      <p style="text-align:center; opacity:0.6; font-size:0.8rem; margin-top:12px;">
+        Админ проверит заявку и опубликует в канал. Обычно в течение нескольких часов.
+      </p>
+    </form>
+
+    <div id="success-block" class="success-card glass hidden">
+      <i class="fa-solid fa-circle-check"></i>
+      <h2>Заявка отправлена!</h2>
+      <p>ИИ оценит рыночную цену, админ проверит и опубликует объявление. Заинтересованные напишут вам напрямую.</p>
+      <button type="button" class="btn btn-secondary mt-2" id="btn-close">Закрыть</button>
+    </div>
+  </div>
+
+  <script>
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+
+    const form = document.getElementById('submit-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const successBlock = document.getElementById('success-block');
+    const closeBtn = document.getElementById('btn-close');
+
+    // Префилл контакта из Telegram
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+      const u = tg.initDataUnsafe.user;
+      if (u.username) document.getElementById('contact').value = '@' + u.username;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(form));
+
+      // photos_raw → массив photos
+      data.photos = (data.photos_raw || '')
+        .split('\n').map(s => s.trim()).filter(s => s.startsWith('http'));
+      delete data.photos_raw;
+
+      if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+        const u = tg.initDataUnsafe.user;
+        data.telegram_user_id = u.id;
+        data.telegram_username = u.username || '';
+        data.telegram_first_name = u.first_name || '';
+      }
+
+      const original = submitBtn.innerHTML;
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Отправляем...';
+
+      try {
+        const res = await fetch('/api/listings/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Ошибка отправки');
+        form.classList.add('hidden');
+        successBlock.classList.remove('hidden');
+      } catch (err) {
+        alert('Ошибка: ' + err.message);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = original;
+      }
+    });
+
+    closeBtn.addEventListener('click', () => {
+      // admin=1 → вернуться в админку; иначе закрыть мини-апп
+      const params = new URLSearchParams(location.search);
+      if (params.get('admin') === '1') {
+        window.location.href = '/';
+      } else if (tg) {
+        tg.close();
+      } else {
+        window.history.back();
+      }
+    });
+  </script>
+</body>
+</html>

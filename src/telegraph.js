@@ -25,8 +25,8 @@ async function getAccessToken(db) {
 
   const result = await callApi('createAccount', {
     short_name: 'BlackSynthesis',
-    author_name: 'Чёрный Синтез',
-    author_url: 'https://t.me/black_synthesis'
+    author_name: 'Авто обмен Казахстан',
+    author_url: 'https://t.me/avto_obmen_kz'
   });
 
   await db.run(
@@ -206,14 +206,14 @@ async function buildContentNodes({ title, content, imageUrl }) {
     tag: 'p',
     children: [
       '— ',
-      { tag: 'a', attrs: { href: 'https://t.me/black_synthesis' }, children: ['@black_synthesis'] }
+      { tag: 'a', attrs: { href: 'https://t.me/avto_obmen_kz' }, children: ['@avto_obmen_kz'] }
     ]
   });
   return nodes;
 }
 
 function cleanupTitle(title) {
-  return (title || 'Чёрный Синтез').replace(/[*_`]/g, '').slice(0, 256);
+  return (title || 'Авто обмен Казахстан').replace(/[*_`]/g, '').slice(0, 256);
 }
 
 // Создаёт Telegraph-страницу, возвращает { url, path, ... }.
@@ -222,8 +222,8 @@ async function createArticle({ title, content, imageUrl, db }) {
   const result = await callApi('createPage', {
     access_token: token,
     title: cleanupTitle(title),
-    author_name: 'Чёрный Синтез',
-    author_url: 'https://t.me/black_synthesis',
+    author_name: 'Авто обмен Казахстан',
+    author_url: 'https://t.me/avto_obmen_kz',
     content: await buildContentNodes({ title, content, imageUrl }),
     return_content: false
   });
@@ -239,8 +239,8 @@ async function editArticle({ path, title, content, imageUrl, db }) {
     access_token: token,
     path,
     title: cleanupTitle(title),
-    author_name: 'Чёрный Синтез',
-    author_url: 'https://t.me/black_synthesis',
+    author_name: 'Авто обмен Казахстан',
+    author_url: 'https://t.me/avto_obmen_kz',
     content: await buildContentNodes({ title, content, imageUrl }),
     return_content: false
   });

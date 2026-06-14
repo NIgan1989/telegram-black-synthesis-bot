@@ -223,6 +223,7 @@ async function init() {
     await migrateAddTelegramMessageId();
     await migrateAddTelegraphColumns();
     await migrateAddReactions();
+    await migrateAddCarData();
     console.log('✅ DB: Все таблицы успешно инициализированы.');
 
     if (process.env.DEMO_MODE === 'true') {
@@ -272,103 +273,69 @@ async function migrateAddReactions() {
   catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
 }
 
+// car_data — JSON с характеристиками автомобиля для type='car_listing'.
+// Структура: {brand, model, year, mileage_km, body, transmission, drivetrain, color,
+//   condition, city, photos:[urls], wants:{brand, model, year_from, doplata_kzt, doplata_direction},
+//   owner:{telegram_id, username, first_name, contact},
+//   vin, vin_check:{status, found_issues, source_url},
+//   price_evaluation:{owner_asks_kzt, market_min, market_avg, market_max, salon_estimate, sources:[]}}
+async function migrateAddCarData() {
+  const sql = isProd
+    ? 'ALTER TABLE posts ADD COLUMN IF NOT EXISTS car_data TEXT'
+    : 'ALTER TABLE posts ADD COLUMN car_data TEXT';
+  try { await run(sql); }
+  catch (err) { if (!/duplicate column/i.test(err.message)) throw err; }
+}
+
 async function seedDemoData() {
   try {
     const existing = await get("SELECT value FROM settings WHERE key = 'auto_post'");
-    if (existing) {
-      return; // Уже заполнено
-    }
-    
-    console.log('🌱 DB: Заполнение базы данных демонстрационными данными...');
-    
-    // 1. Настройки
+    if (existing) return;
+
+    console.log('🌱 DB: Заполнение демо-данными (Авто обмен Казахстан)...');
+
     await run("INSERT INTO settings (key, value) VALUES ('auto_post', 'false')");
-    await run("INSERT INTO settings (key, value) VALUES ('channels_list', '@black_synthesis')");
-    await run("INSERT INTO settings (key, value) VALUES ('post_interval', '6')");
-    
-    // 2. Статистика за последние 7 дней
+    await run("INSERT INTO settings (key, value) VALUES ('channels_list', '@avto_obmen_kz')");
+
     const today = new Date();
     for (let i = 6; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(today.getDate() - i);
       const dateString = date.toISOString().split('T')[0];
-      const subs = 1200 + (6 - i) * 8 + Math.floor(Math.random() * 5);
-      const views = 450 + Math.floor(Math.random() * 150);
-      const engagement = 15 + Math.floor(Math.random() * 20);
-      
       await run(
         "INSERT INTO stats (date, subscribers_count, total_views, active_engagement) VALUES (?, ?, ?, ?)",
-        [dateString, subs, views, engagement]
+        [dateString, 100 + i * 5, 80 + Math.floor(Math.random() * 50), 5 + Math.floor(Math.random() * 8)]
       );
     }
-    
-    // 3. Посты
+
     const now = new Date().toISOString();
-    const scheduledTime = new Date(Date.now() + 3600000 * 4).toISOString(); // через 4 часа
-    
-    const post1 = await run(`
-      INSERT INTO posts (title, content, media_url, status, published_at, type, views)
-      VALUES (?, ?, ?, 'published', ?, 'organic', 450)
-    `, [
-      'Запуск KPI Inc в Атырау: флагман нефтехимического кластера Казахстана',
-      'Интегрированный газохимический комплекс KPI Inc в Атырауской области вышел на проектную мощность по производству полипропилена (до 500 тыс. тонн в год).\n\n⚙️ Это первый масштабный шаг Казахстана в глубокую переработку газа. Комплекс использует технологию Catofin от Lummus Technology и процесс Novolen для полимеризации. Продукция уже активно экспортируется в страны СНГ, Европу и Китай.\n\n#KPI #Атырау #нефтехимия #полипропилен #Казахстан',
-      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
-      now
-    ]);
-    
+    const sampleCar = {
+      brand: 'Toyota', model: 'Camry', year: 2020,
+      mileage_km: 78000, body: 'Седан', transmission: 'АКПП', drivetrain: 'Передний',
+      color: 'Белый', condition: 'Отличное',
+      city: 'Алматы',
+      photos: ['https://upload.wikimedia.org/wikipedia/commons/3/3a/2018_Toyota_Camry_%28ASV70R%29_Ascent_sedan_%282018-08-27%29_01.jpg'],
+      wants: { brand: 'Toyota', model: 'Hilux', year_from: 2018, doplata_kzt: 2000000, doplata_direction: 'я доплачиваю' },
+      owner: { telegram_id: 396019118, username: 'A_Dula', first_name: 'Дулат', contact: '@A_Dula' },
+      price_evaluation: {
+        owner_asks_kzt: 14500000,
+        market_min: 14000000, market_avg: 14800000, market_max: 15500000,
+        salon_estimate: 12000000,
+        sources: [{ url: 'https://kolesa.kz/cars/toyota/camry/', title: 'Toyota Camry 2020 на kolesa.kz' }]
+      }
+    };
+
     await run(`
-      INSERT INTO posts (title, content, media_url, status, scheduled_at, type)
-      VALUES (?, ?, ?, 'scheduled', ?, 'organic')
+      INSERT INTO posts (title, content, media_url, status, type, car_data)
+      VALUES (?, ?, ?, 'draft', 'car_listing', ?)
     `, [
-      'Модернизация «Навоиазот» и развитие химкластера Узбекистана',
-      'Крупнейший химический комбинат Узбекистана АО «Navoiyazot» продолжает диверсификацию производства. Запущены новые мощности по выпуску ПВХ (поливинилхлорида) и каустической соды.\n\n💡 Развитие химического кластера в Навои создает синергию для всей Центральной Азии, обеспечивая полимерами строительный и упаковочный сектора.\n\n#Navoiyazot #Узбекистан #СНГ #полимеры #ПВХ',
-      'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80',
-      scheduledTime
-    ]);
-    
-    await run(`
-      INSERT INTO posts (title, content, media_url, status, type)
-      VALUES (?, ?, ?, 'draft', 'organic')
-    `, [
-      'Черновик: Перспективы завода по производству полиэтилена Silleno',
-      'Будущий завод Silleno в Атырауской области мощностью 1,25 млн тонн полиэтилена в год привлечет более 7 млрд долларов инвестиций. Проект реализуется КазМунайГазом совместно с СИБУРом и Sinopec.\n\n#Silleno #полиэтилен #Казахстан #нефтехимия',
-      'https://images.unsplash.com/photo-1542060748-10c28b629f6f?auto=format&fit=crop&w=1200&q=80'
+      'Демо: Toyota Camry 2020 → ищу Hilux',
+      'Демо-заявка на обмен. Одобри в админке для теста публикации.',
+      sampleCar.photos[0],
+      JSON.stringify(sampleCar)
     ]);
 
-    // 4. Комментарии к первому опубликованному посту
-    const postId = post1.lastID || 1;
-    await run(`
-      INSERT INTO comments (telegram_message_id, post_id, username, text, sentiment, created_at)
-      VALUES (?, ?, '@Arman_KNG', 'Отличные новости! Наконец-то начали производить полимеры высокого передела прямо у нас.', 'positive', ?)
-    `, [10001, postId, now]);
-
-    await run(`
-      INSERT INTO comments (telegram_message_id, post_id, username, text, sentiment, created_at)
-      VALUES (?, ?, '@Dmitry_Oil', 'Комплекс огромный. Хватит ли стабильных объемов пропана с Тенгиза для полной загрузки круглый год?', 'neutral', ?)
-    `, [10002, postId, now]);
-
-    await run(`
-      INSERT INTO comments (telegram_message_id, post_id, username, text, sentiment, created_at)
-      VALUES (?, ?, '@Skeptik_01', 'Экспорт идет, а внутренние производители пластиковых изделий все еще жалуются на цены на сырье.', 'negative', ?)
-    `, [10003, postId, now]);
-
-    // 5. Рекламный заказ
-    const adPost = await run(`
-      INSERT INTO posts (title, content, media_url, status, scheduled_at, type)
-      VALUES (?, ?, ?, 'scheduled', ?, 'ad')
-    `, [
-      'Спецпроект: Минеральные удобрения от АО «КазАзот»',
-      'АО «КазАзот» представляет обновленную линейку азотных удобрений (аммиачная селитра) для аграриев Казахстана и стран СНГ. Гарантия высокой урожайности и соответствие мировым экологическим стандартам.\n\n📞 Подробности и заказы на сайте kazazot.kz\n\n#реклама #удобрения #КазАзот #Актау #сельхоз',
-      'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80',
-      scheduledTime
-    ]);
-
-    await run(`
-      INSERT INTO orders (advertiser_name, amount_paid, publish_date, post_id, status)
-      VALUES (?, 150000, ?, ?, 'paid')
-    `, ['АО КазАзот', scheduledTime, adPost.lastID || 4]);
-
-    console.log('🌱 DB: База успешно заполнена демонстрационными данными.');
+    console.log('🌱 DB: Демо-данные посеяны.');
   } catch (err) {
     console.error('❌ DB: Ошибка заполнения демо-данными:', err.message);
   }

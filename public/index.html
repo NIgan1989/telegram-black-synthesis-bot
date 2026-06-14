@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Черный Синтез — Админ-панель</title>
+  <title>Авто обмен Казахстан — Админ-панель</title>
   <!-- Google Fonts: Inter & Montserrat -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,7 +43,7 @@
             <img src="logo.png" class="channel-avatar-img" alt="logo">
           </div>
           <div>
-            <h1 class="channel-title">Черный Синтез</h1>
+            <h1 class="channel-title">Авто обмен Казахстан</h1>
             <p class="channel-subtitle" id="channel-username">@loading...</p>
           </div>
         </div>
@@ -74,12 +74,23 @@
 
           <div class="metric-card glass">
             <div class="metric-header">
-              <span class="metric-title">Публикации</span>
-              <i class="fa-solid fa-file-invoice metric-icon purple"></i>
+              <span class="metric-title">Объявления в канале</span>
+              <i class="fa-solid fa-car metric-icon purple"></i>
             </div>
             <div class="metric-value" id="metric-posts">0</div>
             <div class="metric-change" id="metric-posts-change">
-              ИИ-генерация активна
+              Опубликованные
+            </div>
+          </div>
+
+          <div class="metric-card glass">
+            <div class="metric-header">
+              <span class="metric-title">Заявки на одобрение</span>
+              <i class="fa-solid fa-clock-rotate-left metric-icon orange"></i>
+            </div>
+            <div class="metric-value orange-text" id="metric-pending-listings">0</div>
+            <div class="metric-change" id="metric-pending-change">
+              Ждут модерации
             </div>
           </div>
 
@@ -91,17 +102,6 @@
             <div class="metric-value" id="metric-revenue">0 ₸</div>
             <div class="metric-change positive" id="metric-revenue-change">
               Рекламных постов: <span id="metric-ads-count">0</span>
-            </div>
-          </div>
-
-          <div class="metric-card glass">
-            <div class="metric-header">
-              <span class="metric-title">Комментарии</span>
-              <i class="fa-solid fa-comment-dots metric-icon orange"></i>
-            </div>
-            <div class="metric-value" id="metric-comments">0</div>
-            <div class="metric-change" id="metric-comments-sentiment">
-              Индекс настроения: <span id="metric-sentiment-index">Нейтральный</span>
             </div>
           </div>
         </div>
@@ -123,32 +123,32 @@
         </div>
       </section>
 
-      <!-- Секция 2: Управление постами (ИИ черновики) -->
+      <!-- Секция 2: Объявления об обмене авто (модерация заявок) -->
       <section id="tab-posts" class="tab-content">
         <div class="tab-header-actions">
-          <h2>Статьи и Черновики</h2>
-          <div class="header-buttons-row">
-            <button class="btn btn-success" id="btn-open-ai-prompt-modal">
-              <i class="fa-solid fa-wand-magic-sparkles"></i> ИИ-пост по промпту
-            </button>
-            <button class="btn btn-primary" id="btn-trigger-aggregation">
-              <i class="fa-solid fa-rotate"></i> Собрать новости
-            </button>
-          </div>
+          <h2>Объявления</h2>
+          <button class="btn btn-success" id="btn-open-listing-modal" title="Внести машину вручную (если хозяин звонил/писал не через форму)">
+            <i class="fa-solid fa-plus"></i> Внести вручную
+          </button>
         </div>
 
-        <!-- Переключатель фильтров постов -->
+        <p class="section-description mt-1">
+          Заявки приходят через форму /submit.html и команду /submit бота. ИИ оценит рыночную цену и напишет описание автоматически — твоя задача только проверить и одобрить.
+        </p>
+
+        <!-- Переключатель фильтров -->
         <div class="filter-bar glass mt-2">
-          <button class="filter-btn active" data-status="draft">Черновики</button>
-          <button class="filter-btn" data-status="scheduled">Запланированные</button>
-          <button class="filter-btn" data-status="published">Опубликованные</button>
+          <button class="filter-btn active" data-listing-status="draft">⏳ Ждут одобрения</button>
+          <button class="filter-btn" data-listing-status="published">✅ В канале</button>
+          <button class="filter-btn" data-listing-status="rejected">❌ Отклонённые</button>
+          <button class="filter-btn" data-listing-status="all">Все</button>
         </div>
 
-        <!-- Список постов -->
-        <div id="posts-list" class="posts-list mt-2">
+        <!-- Список объявлений -->
+        <div id="listings-list" class="posts-list mt-2">
           <div class="no-data glass">
-            <i class="fa-solid fa-folder-open"></i>
-            <p>Нет постов в данной категории</p>
+            <i class="fa-solid fa-car"></i>
+            <p>Пока нет заявок</p>
           </div>
         </div>
       </section>
@@ -295,7 +295,7 @@
             
             <div class="input-field mt-1">
               <label for="setting-channels-list">Список каналов для публикаций</label>
-              <input type="text" id="setting-channels-list" placeholder="@black_synthesis" required>
+              <input type="text" id="setting-channels-list" placeholder="@avto_obmen_kz" required>
               <span class="input-help">Укажите username или ID вашего канала.</span>
             </div>
 
@@ -325,8 +325,8 @@
         <span>Обзор</span>
       </button>
       <button class="nav-item" data-tab="posts">
-        <i class="fa-solid fa-newspaper"></i>
-        <span>Посты</span>
+        <i class="fa-solid fa-car"></i>
+        <span>Объявления</span>
       </button>
       <button class="nav-item" data-tab="orders">
         <i class="fa-solid fa-handshake"></i>

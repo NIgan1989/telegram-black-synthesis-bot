@@ -178,7 +178,7 @@ async function analyzeSentiment(commentText) {
       }
     });
 
-    const prompt = `Проанализируй тональность следующего комментария в Telegram-канале о химической и нефтехимической промышленности Казахстана и СНГ. 
+    const prompt = `Проанализируй тональность комментария к объявлению об обмене авто на Telegram-канале «Авто обмен Казахстан».
 Верни строго JSON со значением "positive", "neutral" или "negative".
 
 КОММЕНТАРИЙ:
@@ -522,11 +522,138 @@ function mockImprovePost(title, content, instruction) {
   };
 }
 
+// === АВТО ОБМЕН КАЗАХСТАН: оценка машины + генерация поста =========================
+
+// Главная функция: на основе данных автомобиля делает 2 вещи через Gemini + Google Search:
+// 1) ищет рыночную цену похожих машин на kolesa.kz / mojo.kz / автоплощадках и оценивает
+//    диапазон min-avg-max, плюс примерную цену которую дадут перекупы/салоны;
+// 2) пишет красивое экспертное описание в стиле объявления для канала.
+// Возвращает { title, content, price_evaluation:{owner_asks_kzt,market_min,market_avg,
+//   market_max, salon_estimate, sources:[]}, _searchUsed }
+async function evaluateAndDescribeCar(car) {
+  if (isDemo || !process.env.GEMINI_API_KEY) {
+    return mockEvaluateCar(car);
+  }
+
+  const ownerAsks = car && car.price_evaluation && car.price_evaluation.owner_asks_kzt;
+  const photo = (car && car.photos && car.photos[0]) || '';
+  const wantsLine = car.wants
+    ? `${car.wants.brand || '?'} ${car.wants.model || ''} ${car.wants.year_from ? `${car.wants.year_from}+` : ''}`.trim()
+    : 'любой авто';
+
+  const prompt = `Ты — эксперт казахстанского авторынка, ведёшь Telegram-канал «Авто обмен Казахстан».
+Канал — альтернатива салонам Санжар рулит / Ержан рулит / Астер, которые занижают цены б/у машин.
+Твоя задача: дать ЧЕСТНУЮ оценку и красивое описание объявления об ОБМЕНЕ (не продаже).
+
+ДАННЫЕ ОБ АВТО:
+• Марка/модель: ${car.brand || ''} ${car.model || ''}
+• Год: ${car.year || ''}
+• Пробег: ${car.mileage_km || '?'} км
+• Кузов: ${car.body || ''}
+• КПП: ${car.transmission || ''}
+• Привод: ${car.drivetrain || ''}
+• Цвет: ${car.color || ''}
+• Состояние: ${car.condition || ''}
+• Город: ${car.city || ''}
+• Владелец просит цену: ${ownerAsks ? `${ownerAsks.toLocaleString('ru')} ₸` : 'не указана'}
+• ХОЧЕТ ОБМЕНЯТЬ НА: ${wantsLine}
+• Доплата: ${car.wants && car.wants.doplata_kzt ? `${car.wants.doplata_kzt.toLocaleString('ru')} ₸ (${car.wants.doplata_direction || 'не указано направление'})` : 'без доплат'}
+
+ШАГ 1: Через Google Search найди рыночные цены ИМЕННО этой модели/года/пробега на kolesa.kz, mojo.kz, krisha.kz и других казахстанских автоплощадках. Не путай Россию/мир — нужны казахстанские тенге.
+
+ШАГ 2: Оцени диапазон рынка: min / avg / max. Прикинь среднюю цену которую дадут перекупы или салоны (Санжар/Ержан/Астер) — обычно это 80-85% от рыночной нижней границы.
+
+ШАГ 3: Напиши красивое описание для канала в формате-карточке обмена.
+
+СТРУКТУРА ОПИСАНИЯ (HTML-разметка Telegram):
+
+🔄 *<КОРОТКИЙ ЗАГОЛОВОК: марка модель год → что хочет>*
+
+📋 *На руках:*
+• <Марка> <Модель>, <Год>
+• Пробег: <X> км
+• <Кузов>, <КПП>, <Привод>
+• Состояние: <состояние>
+• Город: <город>
+
+💰 *Рыночная цена:* <min-max> млн ₸ (по данным [kolesa.kz](url))
+⚠️ *В салонах предложат:* ~<salon_estimate> млн ₸ — на <X> % ниже рынка
+
+🔄 *Хочу обменять на:*
+<что и доплата с какой стороны>
+
+📞 *Связь с владельцем:* ${car.owner && car.owner.username ? `@${car.owner.username}` : car.owner && car.owner.contact || '@admin'}
+
+#обмен #${car.brand || ''} #${(car.model || '').replace(/\s/g, '')} #${car.city || ''}
+
+ПРАВИЛА:
+1. Только *жирный*, _курсив_, [текст](url), > строка-цитата. БЕЗ ** и ##.
+2. Длина: 600-1000 символов.
+3. Цены округляй до десятков тысяч.
+4. Если рыночные данные не нашёл — добавь в начало "_⚠️ Цена требует ручной проверки_" и поставь market_min=market_avg=market_max=owner_asks.
+
+ВЕРНИ СТРОГО JSON (без \`\`\`json обёрток):
+{
+  "title": "<заголовок поста>",
+  "content": "<HTML-готовый текст по структуре выше>",
+  "market_min": <число KZT>,
+  "market_avg": <число KZT>,
+  "market_max": <число KZT>,
+  "salon_estimate": <число KZT>
+}`;
+
+  try {
+    const { text, sources } = await callGeminiWithSearch(prompt);
+    const parsed = extractJsonFromText(text);
+    return {
+      title: parsed.title || `Обмен: ${car.brand} ${car.model} ${car.year}`,
+      content: sanitizeMarkdown(parsed.content || ''),
+      price_evaluation: {
+        owner_asks_kzt: ownerAsks || null,
+        market_min: parsed.market_min || null,
+        market_avg: parsed.market_avg || null,
+        market_max: parsed.market_max || null,
+        salon_estimate: parsed.salon_estimate || null,
+        sources: sources.slice(0, 6)
+      },
+      _searchUsed: true
+    };
+  } catch (e) {
+    console.warn('⚠️ Gemini car eval failed:', e.message);
+    return mockEvaluateCar(car);
+  }
+}
+
+function mockEvaluateCar(car) {
+  const ownerAsks = car && car.price_evaluation && car.price_evaluation.owner_asks_kzt || 10000000;
+  const wantsLine = car.wants ? `${car.wants.brand || '?'} ${car.wants.model || ''}`.trim() : 'любой';
+  return {
+    title: `Обмен: ${car.brand || 'Авто'} ${car.model || ''} ${car.year || ''} → ${wantsLine}`,
+    content: `🔄 *${(car.brand || '').toUpperCase()} ${car.model || ''} ${car.year || ''} → ${wantsLine}*\n\n` +
+      `_⚠️ Демо: реальная оценка цены недоступна без GEMINI_API_KEY._\n\n` +
+      `📋 *На руках:*\n• ${car.brand || ''} ${car.model || ''}, ${car.year || ''}\n• Пробег: ${car.mileage_km || '?'} км\n• ${car.city || ''}\n\n` +
+      `💰 *Цена владельца:* ${ownerAsks.toLocaleString('ru')} ₸\n\n` +
+      `🔄 *Хочу обменять на:* ${wantsLine}\n\n` +
+      `📞 *Связь:* ${(car.owner && car.owner.contact) || '@admin'}\n\n` +
+      `#обмен #${car.brand || 'авто'}`,
+    price_evaluation: {
+      owner_asks_kzt: ownerAsks,
+      market_min: Math.round(ownerAsks * 0.95),
+      market_avg: ownerAsks,
+      market_max: Math.round(ownerAsks * 1.08),
+      salon_estimate: Math.round(ownerAsks * 0.78),
+      sources: []
+    },
+    _mock: true
+  };
+}
+
 module.exports = {
   generateArticle,
   analyzeSentiment,
   generatePostFromPrompt,
   improvePost,
   sanitizeMarkdown,
-  richToHtml
+  richToHtml,
+  evaluateAndDescribeCar
 };

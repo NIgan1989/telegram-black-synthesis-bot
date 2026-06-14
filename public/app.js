@@ -105,9 +105,11 @@ let state = {
   currentTab: 'overview',
   postFilter: 'draft',
   orderFilter: 'pending',
+  listingFilter: 'draft',
   stats: null,
   posts: [],
   orders: [],
+  listings: [],
   comments: [],
   settings: {}
 };
@@ -252,7 +254,7 @@ function initNavigation() {
 
 function onTabOpened(tabId) {
   if (tabId === 'posts') {
-    loadPosts();
+    loadListings();
   } else if (tabId === 'orders') {
     loadOrders();
   } else if (tabId === 'comments') {
@@ -270,11 +272,205 @@ function onTabOpened(tabId) {
 async function refreshAllData() {
   await Promise.all([
     loadStats(),
-    loadPosts(),
+    loadListings(),
     loadOrders(),
     loadComments(),
     loadSettings()
   ]);
+}
+
+// ---------------------------------------------
+// 🚗 Объявления об обмене авто
+// ---------------------------------------------
+function filterListings(listings) {
+  if (state.listingFilter === 'all') return listings;
+  return listings.filter(l => l.status === state.listingFilter);
+}
+
+async function loadListings() {
+  try {
+    const res = await fetch('/api/listings', { headers: getHeaders() });
+    if (!res.ok) throw new Error('Ошибка сети');
+    const rows = await res.json();
+    state.listings = Array.isArray(rows) ? rows : [];
+    renderListings(filterListings(state.listings));
+  } catch (err) {
+    console.error('Ошибка загрузки объявлений:', err);
+  }
+}
+
+function fmtKzt(n) {
+  if (!n && n !== 0) return '—';
+  return Number(n).toLocaleString('ru-RU') + ' ₸';
+}
+
+function renderListings(listings) {
+  const container = document.getElementById('listings-list');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!listings.length) {
+    container.innerHTML = `
+      <div class="no-data glass">
+        <i class="fa-solid fa-car"></i>
+        <p>Нет заявок в этой категории</p>
+      </div>`;
+    return;
+  }
+
+  listings.forEach(item => {
+    const c = item.car_data || {};
+    const ev = c.price_evaluation || {};
+    const card = document.createElement('div');
+    card.className = 'post-card glass car-card';
+
+    const statusBadge = item.status === 'draft' ? '<span class="post-type-badge orange">⏳ Ждёт</span>'
+      : item.status === 'published' ? '<span class="post-type-badge green">✅ В канале</span>'
+      : item.status === 'rejected' ? '<span class="post-type-badge red">❌ Отклонено</span>'
+      : `<span class="post-type-badge">${item.status}</span>`;
+
+    const photo = (c.photos && c.photos[0]) || item.media_url;
+    const photoHtml = photo
+      ? `<img src="${String(photo).replace(/"/g, '&quot;')}" class="car-card-photo" alt="фото" onerror="this.style.display='none'">`
+      : '';
+
+    const wants = c.wants || {};
+    const wantsLine = wants.brand
+      ? `${wants.brand} ${wants.model || ''} ${wants.year_from ? wants.year_from + '+' : ''}`.trim()
+      : 'не указано';
+    const doplata = wants.doplata_kzt
+      ? `${fmtKzt(wants.doplata_kzt)} (${wants.doplata_direction || '?'})`
+      : 'без доплат';
+
+    // Блок оценки — показываем только если ИИ уже оценил
+    let evalHtml = '';
+    if (ev.market_avg || ev.salon_estimate) {
+      const diff = (ev.market_min && ev.salon_estimate)
+        ? Math.round((1 - ev.salon_estimate / ev.market_min) * 100)
+        : null;
+      evalHtml = `
+        <div class="car-eval">
+          <div>💰 Рынок: <b>${fmtKzt(ev.market_min)} – ${fmtKzt(ev.market_max)}</b></div>
+          <div>🏠 Салоны дадут: <b>${fmtKzt(ev.salon_estimate)}</b>${diff ? ` <span class="red-text">(–${diff}%)</span>` : ''}</div>
+        </div>`;
+    }
+
+    const contact = (c.owner && (c.owner.contact || (c.owner.username ? '@' + c.owner.username : ''))) || '—';
+
+    let actions = '';
+    if (item.status === 'draft') {
+      actions = `
+        <button class="btn btn-success btn-sm approve-listing-btn" data-id="${item.id}">🤖 Оценить и опубликовать</button>
+        <button class="btn btn-secondary btn-sm edit-listing-btn" data-id="${item.id}">✏️</button>
+        <button class="btn btn-danger btn-sm reject-listing-btn" data-id="${item.id}">❌</button>
+      `;
+    } else if (item.status === 'published') {
+      actions = `<button class="btn btn-danger btn-sm delete-listing-btn" data-id="${item.id}">🗑 Удалить из канала</button>`;
+    } else {
+      actions = `<button class="btn btn-secondary btn-sm reapprove-listing-btn" data-id="${item.id}">↩️ Вернуть в очередь</button>`;
+    }
+
+    card.innerHTML = `
+      <div class="post-card-header">
+        <h3>${c.brand || ''} ${c.model || ''} ${c.year || ''}</h3>
+        ${statusBadge}
+      </div>
+      ${photoHtml}
+      <div class="car-specs">
+        <span>📍 ${c.city || '—'}</span>
+        <span>🛣 ${c.mileage_km ? Number(c.mileage_km).toLocaleString('ru-RU') + ' км' : '—'}</span>
+        <span>⚙️ ${c.transmission || '—'}</span>
+        <span>💵 хочет: ${fmtKzt(ev.owner_asks_kzt)}</span>
+      </div>
+      <div class="car-wants">🔄 <b>Меняет на:</b> ${wantsLine} · ${doplata}</div>
+      ${evalHtml}
+      <div class="car-contact">📞 ${contact}${c.vin ? ` · VIN: ${c.vin}` : ''}</div>
+      <div class="post-card-actions">${actions}</div>
+    `;
+    container.appendChild(card);
+  });
+
+  attachListingButtons();
+}
+
+function attachListingButtons() {
+  document.querySelectorAll('.approve-listing-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-id');
+      tg.showConfirm('ИИ оценит рыночную цену (поиск по kolesa.kz) и опубликует объявление в канал. Продолжить?', async (ok) => {
+        if (!ok) return;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ИИ оценивает цену…';
+        try {
+          const res = await fetch(`/api/listings/${id}/approve`, { method: 'POST', headers: getHeaders() });
+          const data = await res.json();
+          if (!res.ok) throw new Error((data.error || 'Ошибка') + (data.hint ? '\n\n' + data.hint : ''));
+          const ev = data.price_evaluation || {};
+          const msg = data.mock
+            ? 'Опубликовано (демо-оценка, нужен GEMINI_API_KEY для реальной).'
+            : `Опубликовано! Рынок: ${fmtKzt(ev.market_min)}–${fmtKzt(ev.market_max)}, салоны: ${fmtKzt(ev.salon_estimate)}.`;
+          safePopup('✅ Готово', msg);
+          await Promise.all([loadListings(), loadStats()]);
+        } catch (e) {
+          safePopup('Ошибка', e.message);
+          btn.disabled = false;
+          btn.innerHTML = '🤖 Оценить и опубликовать';
+        }
+      });
+    });
+  });
+
+  document.querySelectorAll('.reject-listing-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-id');
+      tg.showConfirm('Отклонить заявку? Объявление не попадёт в канал.', async (ok) => {
+        if (!ok) return;
+        try {
+          const res = await fetch(`/api/listings/${id}/reject`, { method: 'POST', headers: getHeaders() });
+          if (!res.ok) throw new Error('Ошибка');
+          await loadListings();
+        } catch (e) { safePopup('Ошибка', e.message); }
+      });
+    });
+  });
+
+  document.querySelectorAll('.reapprove-listing-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-id');
+      try {
+        // Вернуть в очередь = поставить статус draft через PUT поста
+        const item = state.listings.find(l => String(l.id) === String(id));
+        if (!item) return;
+        await fetch(`/api/posts/${id}`, {
+          method: 'PUT', headers: getHeaders(),
+          body: JSON.stringify({ title: item.title, content: item.content, media_url: item.media_url, status: 'draft', scheduled_at: null })
+        });
+        await loadListings();
+      } catch (e) { safePopup('Ошибка', e.message); }
+    });
+  });
+
+  document.querySelectorAll('.delete-listing-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-id');
+      tg.showConfirm('Удалить объявление из канала Telegram и из базы? Необратимо.', async (ok) => {
+        if (!ok) return;
+        try {
+          const res = await fetch(`/api/posts/${id}`, { method: 'DELETE', headers: getHeaders() });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Ошибка');
+          if (data.warning) safePopup('⚠️ Частично', data.warning);
+          await Promise.all([loadListings(), loadStats()]);
+        } catch (e) { safePopup('Ошибка', e.message); }
+      });
+    });
+  });
+
+  document.querySelectorAll('.edit-listing-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      safePopup('Редактирование', 'Полное редактирование заявки появится в следующем обновлении. Сейчас можно одобрить (ИИ сам всё оформит) или отклонить.');
+    });
+  });
 }
 
 // 1. Статистика
@@ -289,25 +485,12 @@ async function loadStats() {
       console.warn('Stats warning:', data.warning);
     }
 
-    // Обновляем метрики на главном экране
-    document.getElementById('metric-posts').innerText = data.summary.totalPosts;
-    document.getElementById('metric-comments').innerText = data.summary.totalComments;
-    document.getElementById('metric-ads-count').innerText = data.summary.completedOrders;
-    
-    const sentiments = data.summary.sentiments;
-    const totalSentiments = sentiments.positive + sentiments.neutral + sentiments.negative;
-    let sentimentIndex = 'Нейтральный';
-    
-    if (totalSentiments > 0) {
-      if (sentiments.positive > sentiments.negative * 1.5) {
-        sentimentIndex = 'Позитивный 🔥';
-        document.getElementById('metric-sentiment-index').className = 'green-text';
-      } else if (sentiments.negative > sentiments.positive * 1.2) {
-        sentimentIndex = 'Критический ⚠️';
-        document.getElementById('metric-sentiment-index').className = 'red-text';
-      }
-    }
-    document.getElementById('metric-sentiment-index').innerText = sentimentIndex;
+    // Обновляем метрики на главном экране (null-safe — состав карточек мог измениться)
+    const setMetric = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+    setMetric('metric-posts', data.summary.totalPosts);
+    setMetric('metric-pending-listings', data.summary.pendingListings ?? 0);
+    setMetric('metric-ads-count', data.summary.completedOrders);
+    setMetric('metric-comments', data.summary.totalComments);
 
     // Отрисовка графиков
     renderSubscribersChart(data.history);
@@ -423,8 +606,9 @@ async function loadSettings() {
 // Отрисовка списка постов (черновики/опубликованные)
 function renderPostsList(posts) {
   const container = document.getElementById('posts-list');
+  if (!container) return; // вкладка "Посты" заменена на "Объявления"
   container.innerHTML = '';
-  
+
   if (posts.length === 0) {
     container.innerHTML = `
       <div class="no-data glass">
@@ -771,14 +955,14 @@ function initEventHandlers() {
     'order-post-content'      // создание рекламного заказа вручную
   ].forEach(setupVoiceInput);
 
-  // 1a. Кнопки фильтрации постов (вкладка Посты)
-  const postFilterBtns = document.querySelectorAll('.filter-btn[data-status]');
-  postFilterBtns.forEach(btn => {
+  // 1a. Кнопки фильтрации объявлений (вкладка Объявления)
+  const listingFilterBtns = document.querySelectorAll('.filter-btn[data-listing-status]');
+  listingFilterBtns.forEach(btn => {
     btn.addEventListener('click', () => {
-      postFilterBtns.forEach(b => b.classList.remove('active'));
+      listingFilterBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      state.postFilter = btn.getAttribute('data-status');
-      loadPosts();
+      state.listingFilter = btn.getAttribute('data-listing-status');
+      renderListings(filterListings(state.listings));
     });
   });
 
@@ -791,51 +975,6 @@ function initEventHandlers() {
       state.orderFilter = btn.getAttribute('data-order-status');
       renderOrdersTable(filterOrders(state.orders));
     });
-  });
-
-  // 2. Сборщик постов по требованию (ИИ-генерация)
-  const triggerBtn = document.getElementById('btn-trigger-aggregation');
-  triggerBtn.addEventListener('click', async () => {
-    // Включаем спиннер на кнопке
-    const originalHtml = triggerBtn.innerHTML;
-    triggerBtn.disabled = true;
-    triggerBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Сбор новостей...`;
-
-    try {
-      const res = await fetch('/api/cron-trigger', {
-        method: 'POST',
-        headers: getHeaders()
-      });
-
-      if (!res.ok) throw new Error('Ошибка вызова API');
-      const d = await res.json();
-
-      let summary;
-      if (d.createdCount > 0) {
-        summary = `Создано постов: ${d.createdCount} (статус: ${d.autoPost ? 'scheduled' : 'draft'})`;
-      } else if (d.totalArticles === 0) {
-        summary = 'Источники новостей не вернули ни одной статьи. Проверь Vercel логи /api/cron.';
-      } else if (d.skippedDuplicates === d.totalArticles) {
-        summary = `Все ${d.totalArticles} найденных новостей уже в БД (дубликаты). Свежих нет.`;
-      } else if (d.errors && d.errors.length > 0) {
-        summary = `Найдено ${d.totalArticles}, ошибок ${d.errors.length}. Первая: ${d.errors[0].slice(0, 100)}`;
-      } else {
-        summary = `Найдено ${d.totalArticles}, пропущено дубликатов ${d.skippedDuplicates}.`;
-      }
-
-      const autoHint = d.autoPost
-        ? ' ✅ Автопостинг включён — посты публикуются автоматически.'
-        : ' ⚠️ Автопостинг ВЫКЛ — посты создаются как черновики. Включи в Настройках если хочешь auto-publish.';
-
-      safePopup(d.createdCount > 0 ? 'Готово' : 'Завершено', summary + autoHint);
-      await loadPosts();
-    } catch (e) {
-      console.error(e);
-      safePopup('Ошибка', e.message || 'Не удалось запустить сбор новостей.');
-    } finally {
-      triggerBtn.disabled = false;
-      triggerBtn.innerHTML = originalHtml;
-    }
   });
 
   // 3. Форма настроек
@@ -931,13 +1070,22 @@ function initEventHandlers() {
     });
   }
 
+  // 3d. Кнопка "Внести вручную" во вкладке Объявления → открывает форму заявки
+  const openListingBtn = document.getElementById('btn-open-listing-modal');
+  if (openListingBtn) {
+    openListingBtn.addEventListener('click', () => {
+      // Форма submit.html создаёт draft-заявку, которая появится здесь же в очереди.
+      window.location.href = 'submit.html?admin=1';
+    });
+  }
+
   // 4. Модальное окно Рекламы (Заказов)
   const openOrderBtn = document.getElementById('btn-open-order-modal');
   const closeOrderBtn = document.getElementById('btn-close-order-modal');
   const cancelOrderBtn = document.getElementById('btn-cancel-order');
   const orderModal = document.getElementById('order-modal');
 
-  openOrderBtn.addEventListener('click', () => {
+  if (openOrderBtn) openOrderBtn.addEventListener('click', () => {
     // Установим текущее время + 1 час по дефолту
     const defaultDate = new Date(Date.now() + 3600000);
     defaultDate.setMinutes(0);
@@ -1134,12 +1282,14 @@ function initEventHandlers() {
 }
 
 function initAiPromptModal() {
+  const openBtn = document.getElementById('btn-open-ai-prompt-modal');
+  if (!openBtn) return; // ИИ-пост по промпту убран из авто-обмена — модалки нет
+
   const aiModal = document.getElementById('ai-prompt-modal');
   const stagePrompt = document.getElementById('ai-stage-prompt');
   const stageResult = document.getElementById('ai-stage-result');
   const scheduleField = document.getElementById('ai-schedule-field');
 
-  const openBtn = document.getElementById('btn-open-ai-prompt-modal');
   const closeBtn = document.getElementById('btn-close-ai-modal');
   const cancelBtn = document.getElementById('btn-cancel-ai');
   const generateBtn = document.getElementById('btn-generate-ai');

@@ -18,23 +18,21 @@ module.exports = async (req, res) => {
   console.log('⏰ Serverless Cron: Запуск плановых задач...');
 
   try {
-    // 1. Инициализируем БД и Telegram Bot API
     await db.init();
     bot.initBot();
 
-    // 2. Выполняем сбор новостей и автогенерацию
-    const createdCount = await scheduler.runNewsAggregation();
+    // Авто обмен Казахстан: новостной агрегатор (химия) ОТКЛЮЧЁН — канал теперь про авто.
+    // Объявления заводятся продавцами через форму и одобряются вручную.
+    // Cron оставлен только для:
+    //  1) обновления статистики подписчиков
+    //  2) публикации запланированных постов (если такие появятся)
 
-    // 3. Обновляем статистику подписчиков
     await scheduler.updateDailyStats();
-
-    // 4. Публикуем запланированные посты
     await scheduler.publishScheduledPosts();
 
-    res.status(200).json({ 
-      success: true, 
-      message: 'Плановые задачи успешно выполнены', 
-      createdPosts: createdCount 
+    res.status(200).json({
+      success: true,
+      message: 'Плановые задачи выполнены (статистика + запланированные посты)'
     });
   } catch (error) {
     console.error('❌ Serverless Cron Error:', error.message);
